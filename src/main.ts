@@ -3,6 +3,7 @@ import { registerSW } from 'virtual:pwa-register';
 import { Game, GameError, LAKES, colOf, other, randomSetup, rowOf, type Color, type Combat, type View } from './game.ts';
 import { PIECES, PIECE_BY_RANK, type Rank } from './pieces.ts';
 import { arrow, crest, e, ordinal, token } from './tokens.ts';
+import { guide } from './guide.ts';
 import { RoomConnection, connectionOptions, createSession, normalizeCode, validCode, type Callbacks, type Session, type StatusKind } from './network.ts';
 import { LocalConnection } from './local.ts';
 
@@ -93,8 +94,8 @@ function home() {
       <div class="tabs" role="tablist" aria-label="Choose how to play"><button id="create-tab" role="tab" aria-selected="${!joining}" tabindex="${joining ? -1 : 0}" data-action="create-tab">Create a room</button><button id="join-tab" role="tab" aria-selected="${joining}" tabindex="${joining ? 0 : -1}" data-action="join-tab">Join a friend</button></div>
       <form id="play-form"><label for="player-name">Your name <span>optional</span></label><input id="player-name" name="name" autocomplete="nickname" maxlength="20" placeholder="General…" value="${e(draftName)}" />${joining ? `<label for="room-code">Room code</label><input id="room-code" class="code-input" name="room" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="12" placeholder="ABCD EFGH" value="${e(draftCode)}" required />` : ''}<button class="button primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Connecting…' : joining ? 'Join the battle' : 'Open a war room'} ${arrow}</button><p class="form-note">${joining ? 'Paste the code or open the link your friend sent you.' : 'You get a room code and a link to share with one friend.'}</p></form>
     </div><div class="lobby-meta"><span>Encrypted P2P</span><span>Verified reveals</span><span>No account</span></div></section>
-  <aside class="intro-aside"><div class="sample-board"><div class="board-top"><span class="eyebrow">TWO ARMIES · ONE FLAG</span><span class="player-tag">40</span></div><div class="sample-grid">${sample.map(([rank, color]) => `<span class="sample-cell">${token(rank, color)}</span>`).join('')}</div><div class="sample-divider"></div><div class="sample-legend"><div>${token('10', 'red', { size: 'sm' })}<span>Your pieces show their rank</span></div><div>${token(null, 'blue', { size: 'sm' })}<span>Enemy ranks stay hidden until they fight</span></div></div></div><div class="quick-rules"><span class="eyebrow">HOW IT WORKS</span><h2>Every reveal is<br>cryptographically checked.</h2><p>Each army is committed with salted hashes before the first move. When a piece fights, its owner proves the rank against that commitment, so neither browser has to trust the other.</p><button class="text-button" data-action="rules">How to play <span>↗</span></button></div></aside></div>
-`;
+  <aside class="intro-aside"><div class="sample-board"><div class="board-top"><span class="eyebrow">TWO ARMIES · ONE FLAG</span><span class="player-tag">40</span></div><div class="sample-grid">${sample.map(([rank, color]) => `<span class="sample-cell">${token(rank, color)}</span>`).join('')}</div><div class="sample-divider"></div><div class="sample-legend"><div>${token('10', 'red', { size: 'sm' })}<span>Your pieces show their rank</span></div><div>${token(null, 'blue', { size: 'sm' })}<span>Enemy ranks stay hidden until they fight</span></div></div></div><div class="quick-rules"><span class="eyebrow">HOW IT WORKS</span><h2>Every reveal is<br>cryptographically checked.</h2><p>Each army is committed with salted hashes before the first move. When a piece fights, its owner proves the rank against that commitment, so neither browser has to trust the other.</p><a class="text-button" href="#how-to-play" data-action="rules">How to play <span>↓</span></a></div></aside></div>
+  <section id="how-to-play" class="how-to-play"><div class="section-heading"><h2>How to play</h2><span>Classic rules · 10 × 10 board</span></div>${guide()}</section>`;
 }
 
 // ---------- Room ----------
@@ -182,7 +183,7 @@ function room() {
 }
 
 function dialogs() {
-  return `<dialog id="rules-dialog" aria-labelledby="rules-title"><div class="dialog-top"><span class="eyebrow">THE FIELD MANUAL</span><button class="icon-button" data-action="close-rules" aria-label="Close rules">×</button></div><h2 id="rules-title">How to play Stratego</h2><p>Capture the enemy flag. Higher ranks win fights; bombs, miners, spies and scouts break the pattern.</p><button class="button primary" data-action="close-rules">Back to the field ${arrow}</button></dialog><dialog id="leave-dialog" aria-labelledby="leave-title"><h2 id="leave-title">Leave this room?</h2><p>Your seat, your army and the saved match will be cleared on this device.</p><div class="dialog-actions"><button class="button secondary" data-action="cancel-leave">Keep playing</button><button class="button primary" data-action="confirm-leave">Leave room</button></div></dialog>`;
+  return `<dialog id="rules-dialog" aria-labelledby="rules-title"><div class="dialog-top"><span class="eyebrow">THE FIELD MANUAL</span><button class="icon-button" data-action="close-rules" aria-label="Close rules">×</button></div><h2 id="rules-title">How to play Stratego</h2>${guide()}<button class="button primary" data-action="close-rules">Back to the field ${arrow}</button></dialog><dialog id="leave-dialog" aria-labelledby="leave-title"><h2 id="leave-title">Leave this room?</h2><p>Your seat, your army and the saved match will be cleared on this device.</p><div class="dialog-actions"><button class="button secondary" data-action="cancel-leave">Keep playing</button><button class="button primary" data-action="confirm-leave">Leave room</button></div></dialog>`;
 }
 
 function render() {
@@ -249,7 +250,7 @@ root.addEventListener('click', async event => {
   if (action === 'create-tab') { joining = false; render(); }
   else if (action === 'join-tab') { joining = true; render(); }
   else if (action === 'resume' && resume) await start(resume.role, resume);
-  else if (action === 'rules') { rulesOpen = true; render(); }
+  else if (action === 'rules') { if (session) { event.preventDefault(); rulesOpen = true; render(); } }
   else if (action === 'close-rules') { rulesOpen = false; closeDialog('#rules-dialog'); }
   else if (action === 'copy') await copyInvite(false);
   else if (action === 'share') await copyInvite(true);
