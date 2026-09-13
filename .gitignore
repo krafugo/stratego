@@ -6,3 +6,4 @@ outputs/
 .env.local
 .DS_Store
 test-results/
+.claude/
