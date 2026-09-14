@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Oswald:wght@400;500;600&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f4efe4; }
+  a { color: #9c7735; } a:hover { color: #6f1b22; }
+</style>
+</helmet>
+<section style="display:flex;flex-direction:column;gap:22px;padding:28px 32px 36px;width:1060px;box-sizing:border-box;background:#f4efe4;font-family:'Source Sans 3',system-ui,sans-serif;color:#1c2333">
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <div style="font-family:Oswald,sans-serif;font-size:11px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:#9c7735">Piece sheet · 12 ranks × 2 armies · 74 / 54 / 30 px</div>
+    <h1 style="margin:0;font-family:Cinzel,Georgia,serif;font-weight:700;font-size:28px;line-height:1.1">Number, rank and figure on every tile</h1>
+    <p style="margin:0;font-size:15px;line-height:1.55;color:#4a5266;max-width:820px;text-wrap:pretty">A standing tile (0.78 : 1) in the army colour with a cream label: the number on top, the rank name along the bottom, and an original figure silhouette between them. The figure appears from 64 px, the name from 48 px; below that the number stands alone. Sizes shown: rules guide / battle report (74), desktop board (54), phone board and loss chips (30).</p>
+  </div>
+
+  <div style="display:grid;grid-template-columns:170px repeat(2,minmax(0,1fr));gap:0 28px;align-items:center;background:#fbf8f1;border:1px solid #d6cdb6;border-radius:10px;padding:8px 24px 16px">
+    <div></div>
+    <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;padding:14px 0 6px">Red army — own piece</div>
+    <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;padding:14px 0 6px">Blue army — own piece</div>
+    <sc-for list="{{ pieces }}" as="p" hint-placeholder-count="12">
+      <div style="display:flex;flex-direction:column;gap:3px;padding:12px 0;border-top:1px solid #e3dbc7">
+        <span style="font-family:Cinzel,Georgia,serif;font-size:16px;font-weight:600">{{ p.name }}</span>
+        <span style="font-family:Oswald,sans-serif;font-size:11.5px;letter-spacing:.1em;color:#8a8370">{{ p.meta }}</span>
+        <span style="font-size:12.5px;line-height:1.4;color:#4a5266">{{ p.figure }}</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:20px;padding:12px 0;border-top:1px solid #e3dbc7">
+        <dc-import name="Token" rank="{{ p.rank }}" army="red" mode="own" size="{{ 74 }}" hint-size="58px,74px"></dc-import>
+        <dc-import name="Token" rank="{{ p.rank }}" army="red" mode="own" size="{{ 54 }}" hint-size="42px,54px"></dc-import>
+        <dc-import name="Token" rank="{{ p.rank }}" army="red" mode="own" size="{{ 30 }}" hint-size="23px,30px"></dc-import>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:20px;padding:12px 0;border-top:1px solid #e3dbc7">
+        <dc-import name="Token" rank="{{ p.rank }}" army="blue" mode="own" size="{{ 74 }}" hint-size="58px,74px"></dc-import>
+        <dc-import name="Token" rank="{{ p.rank }}" army="blue" mode="own" size="{{ 54 }}" hint-size="42px,54px"></dc-import>
+        <dc-import name="Token" rank="{{ p.rank }}" army="blue" mode="own" size="{{ 30 }}" hint-size="23px,30px"></dc-import>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display:grid;grid-template-columns:230px repeat(2,minmax(0,1fr));gap:0 28px;align-items:center;background:#fbf8f1;border:1px solid #d6cdb6;border-radius:10px;padding:8px 24px 16px">
+    <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;padding:14px 0 6px">State</div>
+    <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;padding:14px 0 6px">Red · 74 / 54 / 30</div>
+    <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;padding:14px 0 6px">Blue · 74 / 54 / 30</div>
+    <sc-for list="{{ states }}" as="s" hint-placeholder-count="6">
+      <div style="display:flex;flex-direction:column;gap:3px;padding:16px 0;border-top:1px solid #e3dbc7">
+        <span style="font-family:Oswald,sans-serif;font-size:13px;font-weight:500;letter-spacing:.06em">{{ s.label }}</span>
+        <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#9c7735">{{ s.cls }}</span>
+        <span style="font-size:12.5px;line-height:1.45;color:#4a5266">{{ s.spec }}</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:22px;padding:16px 0;border-top:1px solid #e3dbc7">
+        <dc-import name="Token" rank="{{ s.rank }}" army="red" mode="{{ s.mode }}" size="{{ 74 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="58px,74px"></dc-import>
+        <dc-import name="Token" rank="{{ s.rank }}" army="red" mode="{{ s.mode }}" size="{{ 54 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="42px,54px"></dc-import>
+        <dc-import name="Token" rank="{{ s.rank }}" army="red" mode="{{ s.mode }}" size="{{ 30 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="23px,30px"></dc-import>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:22px;padding:16px 0;border-top:1px solid #e3dbc7">
+        <dc-import name="Token" rank="{{ s.rank }}" army="blue" mode="{{ s.mode }}" size="{{ 74 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="58px,74px"></dc-import>
+        <dc-import name="Token" rank="{{ s.rank }}" army="blue" mode="{{ s.mode }}" size="{{ 54 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="42px,54px"></dc-import>
+        <dc-import name="Token" rank="{{ s.rank }}" army="blue" mode="{{ s.mode }}" size="{{ 30 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="23px,30px"></dc-import>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:26px;background:#fbf8f1;border:1px solid #d6cdb6;border-radius:10px;padding:22px 24px">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735">Tile geometry — S = tile height, W = 0.78 S</div>
+      <sc-for list="{{ spec }}" as="t" hint-placeholder-count="10">
+        <div style="display:flex;gap:14px;font-size:13px;line-height:1.5;padding:5px 0;border-bottom:1px dotted #ddd4bd">
+          <span style="flex:0 0 150px;font-family:Oswald,sans-serif;font-size:12px;letter-spacing:.05em">{{ t.k }}</span>
+          <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#4a5266;min-width:0">{{ t.v }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735">Where each size lives</div>
+      <sc-for list="{{ sizes }}" as="t" hint-placeholder-count="5">
+        <div style="display:flex;gap:14px;font-size:13px;line-height:1.5;padding:5px 0;border-bottom:1px dotted #ddd4bd">
+          <span style="flex:0 0 150px;font-family:Oswald,sans-serif;font-size:12px;letter-spacing:.05em">{{ t.k }}</span>
+          <span style="color:#4a5266;min-width:0">{{ t.v }}</span>
+        </div>
+      </sc-for>
+      <p style="margin:10px 0 0;font-size:13px;line-height:1.55;color:#4a5266;text-wrap:pretty">The figures are original silhouettes drawn on a 24 × 32 grid for this project — hats and attributes tell the ranks apart (bicorne and plume for the Marshal, shako for field officers, kepi for company officers, bearskin for the Sergeant, helmet and pick for the Miner, spyglass for the Scout, brim and collar for the Spy). They evoke the original game without copying its artwork.</p>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const PIECES = [
+  ['10', 'Marshal', 1, 'Bicorne, plume, epaulettes'],
+  ['9', 'General', 1, 'Bicorne, epaulettes'],
+  ['8', 'Colonel', 2, 'Shako with plume, epaulettes'],
+  ['7', 'Major', 3, 'Shako with pompom'],
+  ['6', 'Captain', 4, 'Kepi, epaulettes'],
+  ['5', 'Lieutenant', 4, 'Kepi'],
+  ['4', 'Sergeant', 4, 'Bearskin'],
+  ['3', 'Miner', 5, 'Helmet, pick over the shoulder'],
+  ['2', 'Scout', 8, 'Kepi, spyglass'],
+  ['S', 'Spy', 1, 'Wide brim, high collar'],
+  ['B', 'Bomb', 6, 'Shell and lit fuse'],
+  ['F', 'Flag', 1, 'Standard on a pole']
+];
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      pieces: PIECES.map(p => ({ rank: p[0], name: p[1], meta: `RANK ${p[0]} · ×${p[2]}`, figure: p[3] })),
+      states: [
+        { label: 'Own piece', cls: '.piece', rank: '7', mode: 'own', sel: false, moved: false, spec: 'Cream label with number, figure and name. Resting shadow 0 3.5% 8% rgba(28,35,51,.35).' },
+        { label: 'Enemy hidden (back)', cls: '.piece.back', rank: '7', mode: 'back', sel: false, moved: false, spec: 'No label: the army colour with its pattern at full strength and the emblem (lozenge / roundel) at 60%.' },
+        { label: 'Enemy revealed', cls: '.piece.known', rank: '9', mode: 'revealed', sel: false, moved: false, spec: 'Label returns for both players + an outer gold ring 4% of S as the “known” mark.' },
+        { label: 'Has moved', cls: '.piece.moved', rank: '6', mode: 'own', sel: false, moved: true, spec: 'Two gold ticks on the coloured margin at mid-height — this piece cannot be a bomb or the flag.' },
+        { label: 'Selected', cls: '.cell.selected .piece', rank: '7', mode: 'own', sel: true, moved: false, spec: 'Lift −7% of S, gold ring 4.5% of S at 85%, outer glow 45% of S.' },
+        { label: 'Lost', cls: '.piece.lost', rank: '5', mode: 'own', sel: false, moved: false, spec: 'grayscale(1) + opacity .45 — battle report and loss lists.' }
+      ],
+      spec: [
+        { k: 'Tile', v: 'W × S = 0.78 S × S · radius 7% S · border max(1px, 2.5% S) in the army edge colour' },
+        { k: 'Face', v: 'linear-gradient(158deg, c1, c2) + pattern (pinstripe / twill) at 50%, 100% on the back + sheen' },
+        { k: 'Label', v: 'inset 9% W sides, 7% S top/bottom · #f4efe4 · radius 3.5% S · inset hairline rgba(28,35,51,.28) + inner shadow' },
+        { k: 'Number', v: 'Oswald 600 · 25% S with figure, 42% S with name only, 50% S alone · “10” at 88% · ink #1c2333' },
+        { k: 'Figure', v: '62% W × 40% S · filled in the army’s dark tone (c2) · shown at S ≥ 64' },
+        { k: 'Name', v: 'Oswald 500 uppercase · 11% S with figure, 13% S without · min 6px · shown at S ≥ 48' },
+        { k: 'Back emblem', v: '62% W, cream at 60% opacity, centred' },
+        { k: 'Moved ticks', v: '6% W × 20% S, gold, 2% W from each edge, mid-height' },
+        { k: 'Known ring', v: 'outer 0 0 0 4% S #c9a45c (keeps the label readable)' },
+        { k: 'In a cell', v: 'S = 93% of the cell height; the tile is narrower than the cell so a felt gutter shows on both sides' }
+      ],
+      sizes: [
+        { k: '74 px', v: 'Rules guide cards and the battle report — full tile: number, figure, name.' },
+        { k: '54 px', v: 'Desktop board (58 px cells): number + name; the figure is dropped so the name stays legible at 7 px.' },
+        { k: '30 px', v: 'Phone board (33 px cells) and loss chips: number only, back shows the emblem.' },
+        { k: '≥ 64 px cells', v: 'Large monitors get the figure on the board too (tile ≥ 64 px).' },
+        { k: 'Accessibility', v: 'aria-label always carries army, rank name and state; the visual name is a bonus, never the only carrier.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

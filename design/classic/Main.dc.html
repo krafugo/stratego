@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Oswald:wght@400;500;600&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f4efe4; }
+  a { color: #9c7735; } a:hover { color: #6f1b22; }
+  @keyframes stTurn { 0%,100% { box-shadow: inset 0 0 0 1px rgba(201,164,92,.35), 0 0 0 3px rgba(201,164,92,.45), 0 0 22px rgba(201,164,92,.28) } 50% { box-shadow: inset 0 0 0 1px rgba(201,164,92,.35), 0 0 0 3px rgba(201,164,92,.9), 0 0 34px rgba(201,164,92,.5) } }
+  @keyframes stFlash { 0%,100% { opacity: .15 } 45% { opacity: .95 } }
+</style>
+</helmet>
+<section style="display:flex;flex-direction:column;gap:18px;padding:28px 32px 32px;width:760px;box-sizing:border-box;background:#f4efe4;font-family:'Source Sans 3',system-ui,sans-serif;color:#1c2333">
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <div style="font-family:Oswald,sans-serif;font-size:11px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:#9c7735">Board — desktop · 650 px · red to move</div>
+    <h1 style="margin:0;font-family:Cinzel,Georgia,serif;font-weight:700;font-size:28px;line-height:1.1">Classic field, standing pieces</h1>
+    <p style="margin:0;font-size:15px;line-height:1.55;color:#4a5266;max-width:640px;text-wrap:pretty">Every tile carries its number and its rank name on a cream label, like a piece you could pick up. The field is a mapped green with faint contour lines; the lakes keep their ripple. Your own pieces stand face-up; the enemy's stand face-down showing only the army emblem.</p>
+  </div>
+  <div style="width:650px;box-sizing:border-box;padding:22px 22px 12px;background:linear-gradient(150deg,#55402f 0%,#3d2b1f 62%,#2c1e15 100%);border-radius:14px;animation:stTurn 2.6s ease-in-out infinite">
+    <div style="display:flex;gap:8px">
+      <div style="display:flex;flex-direction:column;width:18px">
+        <sc-for list="{{ rowLabels }}" as="r" hint-placeholder-count="10">
+          <div style="height:58px;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-size:12px;color:#d8c39a;letter-spacing:.04em">{{ r }}</div>
+        </sc-for>
+      </div>
+      <div style="{{ grid }}">
+        <sc-for list="{{ cells }}" as="c" hint-placeholder-count="100">
+          <div style="{{ c.style }}">
+            <sc-if value="{{ c.marker }}" hint-placeholder-val="{{ false }}"><div style="{{ c.markerStyle }}"></div></sc-if>
+            <sc-if value="{{ c.hasToken }}" hint-placeholder-val="{{ false }}">
+              <dc-import name="Token" rank="{{ c.rank }}" army="{{ c.army }}" mode="{{ c.mode }}" size="{{ 54 }}" selected="{{ c.sel }}" moved="{{ c.moved }}" hint-size="42px,54px"></dc-import>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <div style="width:18px"></div>
+      <div style="display:grid;grid-template-columns:repeat(10,58px)">
+        <sc-for list="{{ colLabels }}" as="c" hint-placeholder-count="10">
+          <div style="text-align:center;font-family:Oswald,sans-serif;font-size:12px;color:#d8c39a;letter-spacing:.1em">{{ c }}</div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 24px;font-size:13px;line-height:1.5;color:#4a5266;padding-top:4px;border-top:1px solid #d6cdb6">
+    <sc-for list="{{ notes }}" as="n" hint-placeholder-count="6">
+      <div style="display:flex;gap:10px"><span style="flex:0 0 118px;font-family:Oswald,sans-serif;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:#1c2333">{{ n.k }}</span><span style="min-width:0">{{ n.v }}</span></div>
+    </sc-for>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"feltColor":{"editor":"color","options":["#6d7d5a","#5f7460","#7a7a54","#5c6b7a"],"default":"#6d7d5a","tsType":"string","section":"Board"}}'>
+const COLS = 'ABCDEFGHIJ'.split('');
+const LAKES = new Set(['C5', 'C6', 'D5', 'D6', 'G5', 'G6', 'H5', 'H6']);
+const GOLD = '#c9a45c', ALERT = '#d1504f';
+const CONTOUR = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='174' height='174' viewBox='0 0 174 174'%3E%3Cg fill='none' stroke='%23fdf6e6' stroke-opacity='.11' stroke-width='1.1'%3E%3Cpath d='M-10 44c30-30 62-22 86-2s44 40 66 8 30-12 42-22'/%3E%3Cpath d='M-10 104c34-22 54 6 84-2s54-34 84-12 26 4 26 4'/%3E%3Cellipse cx='60' cy='134' rx='38' ry='15'/%3E%3Cellipse cx='60' cy='134' rx='22' ry='7'/%3E%3Cellipse cx='132' cy='40' rx='20' ry='9'/%3E%3Cpath d='M100 160c20-10 40-6 60 4'/%3E%3C/g%3E%3C/svg%3E\")";
+
+const PLACE = {
+  A1: ['red', 'B', 'own'], B1: ['red', 'F', 'own'], C1: ['red', 'B', 'own'], E1: ['red', '3', 'own'], I1: ['red', '4', 'own'],
+  B2: ['red', '3', 'own'], E2: ['red', '10', 'own'], F2: ['red', '8', 'own'], H2: ['red', 'S', 'own'], J2: ['red', '6', 'own'],
+  A3: ['red', '5', 'own'], D3: ['red', '9', 'own'], G3: ['red', '4', 'own'], I3: ['red', '2', 'own', { moved: 1 }],
+  D4: ['red', '3', 'own', { moved: 1 }], F4: ['red', '6', 'own'], J4: ['red', '7', 'own'],
+  E5: ['red', '7', 'own', { sel: 1 }],
+  E6: ['blue', '2', 'back'], H7: ['blue', '9', 'revealed', { moved: 1 }], A7: ['blue', '5', 'back'], D7: ['blue', '6', 'back'],
+  B8: ['blue', '3', 'back'], C8: ['blue', '8', 'back'], F8: ['blue', '4', 'back', { moved: 1 }], J8: ['blue', '5', 'back'],
+  A9: ['blue', 'B', 'back'], E9: ['blue', '7', 'back'], F9: ['blue', '4', 'back'], I9: ['blue', '2', 'back'],
+  B10: ['blue', '6', 'back'], D10: ['blue', 'B', 'back'], G10: ['blue', 'F', 'back'], H10: ['blue', 'B', 'back'], I10: ['blue', 'B', 'back']
+};
+const STATE = { E4: 'legal', F5: 'legal', E6: 'capture', H9: 'from', H7: 'to', B4: 'flash', E5: 'selected' };
+
+class Component extends DCLogic {
+  cell(id, size) {
+    const lake = LAKES.has(id);
+    const st = STATE[id] || (lake ? 'lake' : 'empty');
+    const p = PLACE[id];
+    const flags = (p && p[3]) || {};
+    const s = ['position:relative;display:flex;align-items:center;justify-content:center;background:transparent', 'box-shadow:inset 0 0 0 1px rgba(28,35,51,.12)'];
+    if (lake) {
+      s.push('background:repeating-radial-gradient(circle at 50% 50%,rgba(253,246,230,.13) 0 1px,transparent 1px 7px),linear-gradient(165deg,#4b82a1 0%,#3f7391 55%,#2e5a74 100%)');
+      s.push('box-shadow:inset 0 2px 8px rgba(0,0,0,.38),inset 0 0 0 1px rgba(28,35,51,.25)');
+    } else if (st === 'selected') {
+      s.push(`box-shadow:inset 0 0 0 ${Math.max(2, size * 0.052).toFixed(1)}px ${GOLD},inset 0 0 ${size * 0.4}px rgba(201,164,92,.35)`);
+    } else if (st === 'capture') {
+      s.push(`box-shadow:inset 0 0 0 ${Math.max(2, size * 0.052).toFixed(1)}px ${ALERT},inset 0 0 ${size * 0.34}px rgba(209,80,79,.3)`);
+    } else if (st === 'to') {
+      s.push('background:rgba(201,164,92,.18);box-shadow:inset 0 0 0 1.5px rgba(201,164,92,.55)');
+    } else if (st === 'from') {
+      s.push('background:rgba(201,164,92,.10)');
+    }
+    let marker = false, markerStyle = '';
+    if (st === 'legal') {
+      marker = true;
+      markerStyle = `width:${(size * 0.2).toFixed(1)}px;height:${(size * 0.2).toFixed(1)}px;border-radius:50%;background:rgba(201,164,92,.75);box-shadow:0 0 0 ${Math.max(1, size * 0.028).toFixed(1)}px rgba(253,246,230,.35)`;
+    } else if (st === 'flash') {
+      marker = true;
+      markerStyle = 'position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,rgba(255,250,235,.95) 0%,rgba(201,164,92,.7) 45%,rgba(201,164,92,0) 72%);animation:stFlash .55s ease-in-out infinite';
+    } else if (st === 'from') {
+      marker = true;
+      markerStyle = `width:${(size * 0.14).toFixed(1)}px;height:${(size * 0.14).toFixed(1)}px;border-radius:50%;border:1.5px solid rgba(201,164,92,.8)`;
+    }
+    return { id, style: s.join(';'), marker, markerStyle, hasToken: !!p, army: p ? p[0] : 'red', rank: p ? p[1] : '7', mode: p ? p[2] : 'own', sel: !!flags.sel, moved: !!flags.moved };
+  }
+  renderVals() {
+    const felt = this.props.feltColor ?? '#6d7d5a';
+    const alt = '#66765a';
+    const cells = [];
+    for (let r = 10; r >= 1; r--) for (let c = 0; c < 10; c++) cells.push(this.cell(COLS[c] + r, 58));
+    return {
+      colLabels: COLS,
+      rowLabels: [10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
+      cells,
+      grid: `display:grid;grid-template-columns:repeat(10,58px);grid-auto-rows:58px;border:2px solid #2c1e15;border-radius:4px;overflow:hidden;box-shadow:inset 0 2px 10px rgba(0,0,0,.35);background-image:${CONTOUR},repeating-conic-gradient(${felt} 0 25%,${alt} 0 50%);background-size:174px 174px,116px 116px;background-position:0 0,0 0`,
+      notes: [
+        { k: 'Field', v: 'felt #6d7d5a / #66765a checker via repeating-conic-gradient (2×2 cells) + contour SVG tile at 11% cream, 174px repeat' },
+        { k: 'Grid lines', v: 'inset 0 0 0 1px rgba(28,35,51,.12) per cell; cells stay transparent so the map shows through' },
+        { k: 'Lakes', v: 'linear 165° #4b82a1 → #3f7391 → #2e5a74 with concentric ripple (1px / 7px), inset 0 2px 8px rgba(0,0,0,.38)' },
+        { k: 'Tile in cell', v: 'standing tile 42 × 54 px in a 58 px cell (0.78 aspect, 93% of cell height)' },
+        { k: 'States', v: 'selected gold ring · legal dot · capture red ring · from hollow ring · to gold wash · flash pulse ×3 — unchanged from v1' },
+        { k: 'Blue seat', v: 'cells rendered in reverse order (not rotated) so numerals and names stay upright' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

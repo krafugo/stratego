@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=Cinzel:wght@600;700&display=swap" rel="stylesheet">
+<style> a { color: #9c7735; } a:hover { color: #6f1b22; } </style>
+</helmet>
+<div style="{{ wrap }}">
+  <div style="{{ tile }}">
+    <div style="{{ pattern }}"></div>
+    <sc-if value="{{ showLabel }}" hint-placeholder-val="{{ true }}">
+      <div style="{{ label }}">
+        <div style="{{ num }}">{{ numeral }}</div>
+        <sc-if value="{{ showFig }}" hint-placeholder-val="{{ true }}">
+          <svg viewBox="0 0 24 32" style="{{ fig }}"><path d="{{ figD }}" fill="currentColor"></path></svg>
+        </sc-if>
+        <sc-if value="{{ showName }}" hint-placeholder-val="{{ true }}">
+          <div style="{{ name }}">{{ rankName }}</div>
+        </sc-if>
+      </div>
+    </sc-if>
+    <sc-if value="{{ showEmblem }}" hint-placeholder-val="{{ false }}">
+      <svg viewBox="0 0 24 24" style="{{ emb }}"><path d="{{ embD }}" fill="currentColor" fillRule="evenodd"></path></svg>
+    </sc-if>
+    <sc-if value="{{ isMoved }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ tickA }}"></div>
+      <div style="{{ tickB }}"></div>
+    </sc-if>
+    <div style="{{ sheen }}"></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":140,"height":140},"rank":{"editor":"enum","options":["10","9","8","7","6","5","4","3","2","S","B","F"],"default":"7","tsType":"string"},"army":{"editor":"enum","options":["red","blue"],"default":"red","tsType":"string"},"mode":{"editor":"enum","options":["own","back","revealed","lost"],"default":"own","tsType":"string"},"size":{"editor":"int","default":74,"min":24,"max":140,"unit":"px","tsType":"number"},"selected":{"editor":"boolean","default":false,"tsType":"boolean"},"moved":{"editor":"boolean","default":false,"tsType":"boolean"}}'>
+// Original figure silhouettes drawn for this project (24×32 grid) — not the licensed Stratego artwork.
+const c = (cx, cy, r) => `M${cx - r} ${cy}A${r} ${r} 0 1 0 ${cx + r} ${cy}A${r} ${r} 0 1 0 ${cx - r} ${cy}Z`;
+const rc = (x, y, w, h) => `M${x} ${y}H${x + w}V${y + h}H${x}Z`;
+const pg = pts => 'M' + pts.map(p => p.join(' ')).join('L') + 'Z';
+
+const HEAD = c(12, 11.5, 4.2) + rc(10.4, 15, 3.2, 2.6);
+const TORSO = pg([[3, 32], [4, 21.5], [9, 17.5], [15, 17.5], [20, 21.5], [21, 32]]);
+const EPAULETTES = rc(2.2, 20, 5.2, 2.4) + rc(16.6, 20, 5.2, 2.4);
+const BICORNE = pg([[1.5, 9.5], [12, 8.2], [22.5, 9.5], [21, 4], [12, 6], [3, 4]]);
+const PLUME = c(20, 3.2, 1.7) + rc(19.2, 3.2, 1.6, 3.5);
+const SHAKO = pg([[7.5, 1.2], [16.5, 1.2], [16, 9], [8, 9]]);
+const KEPI = rc(8, 3.6, 8, 4.6) + pg([[6.5, 8.2], [17.5, 8.2], [18.5, 9.6], [5.5, 9.6]]);
+const BEARSKIN = rc(7.5, 0.4, 9, 9.2);
+const HELMET = 'M6 10A6 6 0 0 1 18 10Z' + rc(4.5, 9.5, 15, 1.6);
+const PICKAXE = pg([[1.5, 30], [19, 12.5], [20.6, 14], [3.2, 31.5]]) + pg([[16.5, 9.5], [22.5, 15.5], [21.2, 16.8], [15.2, 10.8]]);
+const SPYGLASS = rc(13.5, 10.2, 7.5, 2.4) + rc(20.5, 9.5, 2.6, 3.8);
+const BRIM = pg([[1.5, 9.6], [22.5, 9.6], [21, 7.8], [3, 7.8]]) + rc(7, 2, 10, 6.2);
+const COLLAR = pg([[5.5, 18], [18.5, 18], [16.8, 13.2], [7.2, 13.2]]);
+
+const FIGURE = {
+  '10': HEAD + TORSO + EPAULETTES + BICORNE + PLUME,
+  '9': HEAD + TORSO + EPAULETTES + BICORNE,
+  '8': HEAD + TORSO + EPAULETTES + SHAKO + rc(14.6, 0, 2, 2.6),
+  '7': HEAD + TORSO + SHAKO + c(12, 1.6, 1.6),
+  '6': HEAD + TORSO + EPAULETTES + KEPI,
+  '5': HEAD + TORSO + KEPI,
+  '4': HEAD + TORSO + BEARSKIN,
+  '3': PICKAXE + HEAD + TORSO + HELMET,
+  '2': HEAD + TORSO + KEPI + SPYGLASS,
+  'S': HEAD + TORSO + BRIM + COLLAR,
+  'B': c(12, 20, 8.4) + pg([[13, 12], [14.8, 11.6], [17.4, 5.6], [15.8, 5]]) + c(18.8, 3.6, 1.9),
+  'F': rc(5.5, 1.5, 2.2, 29) + pg([[7.7, 3], [21, 3], [17.6, 8.5], [21, 14], [7.7, 14]])
+};
+const NAME = { '10': 'Marshal', '9': 'General', '8': 'Colonel', '7': 'Major', '6': 'Captain', '5': 'Lieutenant', '4': 'Sergeant', '3': 'Miner', '2': 'Scout', 'S': 'Spy', 'B': 'Bomb', 'F': 'Flag' };
+const DOT = 'M12 9.8A2.2 2.2 0 1 0 12 14.2A2.2 2.2 0 1 0 12 9.8Z';
+const EMBLEM = {
+  red: 'M12 1.5L22.5 12L12 22.5L1.5 12ZM12 6.2L17.8 12L12 17.8L6.2 12Z' + DOT,
+  blue: 'M12 1.5A10.5 10.5 0 1 0 12 22.5A10.5 10.5 0 1 0 12 1.5ZM12 6A6 6 0 1 1 12 18A6 6 0 1 1 12 6Z' + DOT
+};
+const ARMY = {
+  red: { c1: '#b13a41', c2: '#6f1b22', edge: '#4b1015', pat: 'repeating-linear-gradient(90deg,rgba(253,246,230,.10) 0 1.5px,transparent 1.5px 7px)' },
+  blue: { c1: '#3a5a8f', c2: '#1b2c50', edge: '#101d38', pat: 'repeating-linear-gradient(45deg,rgba(253,246,230,.10) 0 1.5px,transparent 1.5px 7px)' }
+};
+const GOLD = '#c9a45c', INK = '#1c2333', PARCHMENT = '#f4efe4';
+
+class Component extends DCLogic {
+  renderVals() {
+    const p = this.props;
+    const rank = String(p.rank ?? '7');
+    const army = p.army === 'blue' ? 'blue' : 'red';
+    const mode = p.mode || 'own';
+    const S = Number(p.size ?? 74);
+    const W = S * 0.78;
+    const sel = !!p.selected, moved = !!p.moved;
+    const a = ARMY[army];
+    const back = mode === 'back', lost = mode === 'lost', known = mode === 'revealed';
+    const showFig = S >= 64, showName = S >= 48;
+    const bw = Math.max(1, S * 0.025);
+    const px = n => n.toFixed(1) + 'px';
+
+    const wrap = [
+      `position:relative;width:${px(W)};height:${px(S)};flex:0 0 auto`,
+      `transform:translateY(${sel ? px(-S * 0.07) : '0'})`,
+      `filter:${lost ? 'grayscale(1)' : 'none'};opacity:${lost ? 0.45 : 1}`,
+      'transition:transform .14s ease'
+    ].join(';');
+    const shadow = sel
+      ? `0 ${px(S * 0.12)} ${px(S * 0.2)} rgba(28,35,51,.38), 0 0 0 ${px(Math.max(2, S * 0.045))} rgba(201,164,92,.85), 0 0 ${px(S * 0.45)} rgba(201,164,92,.55)`
+      : `0 ${px(S * 0.035)} ${px(S * 0.08)} rgba(28,35,51,.35)`;
+    const tile = [
+      'position:absolute;inset:0;overflow:hidden',
+      `background:linear-gradient(158deg,${a.c1} 0%,${a.c2} 100%)`,
+      `border:${px(bw)} solid ${a.edge};border-radius:${px(S * 0.07)}`,
+      `box-shadow:${shadow}${known ? `, 0 0 0 ${px(Math.max(1.5, S * 0.04))} ${GOLD}` : ''}`
+    ].join(';');
+    const label = [
+      `position:absolute;left:${px(W * 0.09)};right:${px(W * 0.09)};top:${px(S * 0.07)};bottom:${px(S * 0.07)}`,
+      `background:${PARCHMENT};border-radius:${px(S * 0.035)}`,
+      `box-shadow:inset 0 0 0 ${px(Math.max(0.5, S * 0.012))} rgba(28,35,51,.28), inset 0 ${px(S * 0.02)} ${px(S * 0.04)} rgba(28,35,51,.12)`,
+      `display:flex;flex-direction:column;align-items:center;justify-content:${showName ? 'space-between' : 'center'}`,
+      `padding:${px(S * 0.035)} 0 ${px(S * 0.03)};color:${INK};overflow:hidden`
+    ].join(';');
+    const numSize = (showFig ? 0.25 : showName ? 0.42 : 0.5) * S * (rank === '10' ? 0.88 : 1);
+    return {
+      wrap, tile,
+      pattern: `position:absolute;inset:0;background:${a.pat};opacity:${back ? 1 : .5};pointer-events:none`,
+      sheen: 'position:absolute;inset:0;background:linear-gradient(180deg,rgba(253,246,230,.14) 0%,rgba(253,246,230,0) 40%,rgba(28,35,51,.12) 100%);pointer-events:none',
+      showLabel: !back, showEmblem: back, showFig: !back && showFig, showName: !back && showName,
+      label,
+      numeral: rank, rankName: NAME[rank].toUpperCase(),
+      num: `font-family:Oswald,'Arial Narrow',sans-serif;font-weight:600;font-size:${px(numSize)};line-height:1;letter-spacing:${rank === '10' ? '-.02em' : '0'};font-variant-numeric:tabular-nums`,
+      fig: `width:${px(W * 0.62)};height:${px(S * 0.4)};color:${a.c2};display:block`,
+      figD: FIGURE[rank] || FIGURE['7'],
+      name: `font-family:Oswald,'Arial Narrow',sans-serif;font-weight:500;font-size:${px(Math.max(6, (showFig ? 0.11 : 0.13) * S))};line-height:1;letter-spacing:.04em;white-space:nowrap;text-transform:uppercase`,
+      embD: EMBLEM[army],
+      emb: `position:absolute;left:50%;top:50%;width:${px(W * 0.62)};height:${px(W * 0.62)};transform:translate(-50%,-50%);color:#fdf6e6;opacity:.6`,
+      isMoved: moved,
+      tickA: `position:absolute;left:${px(W * 0.02)};top:50%;width:${px(W * 0.06)};height:${px(S * 0.2)};transform:translateY(-50%);background:${GOLD};border-radius:${px(S * 0.02)}`,
+      tickB: `position:absolute;right:${px(W * 0.02)};top:50%;width:${px(W * 0.06)};height:${px(S * 0.2)};transform:translateY(-50%);background:${GOLD};border-radius:${px(S * 0.02)}`
+    };
+  }
+}
+</script>
+</body>
+</html>
