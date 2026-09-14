@@ -90,6 +90,24 @@ test('movement: one square orthogonally, lakes blocked, bombs and flags fixed, s
   assert.equal(guest.view().board[60]!.rank, null);      // unmoved and unrevealed
 });
 
+test('a scout runs any distance over empty squares but never through pieces or lakes', async () => {
+  // Official rule: the Scout moves any number of open squares in a straight line, like a rook,
+  // cannot jump over pieces or lakes, and may attack at the end of its run.
+  const { host, guest } = await table({ 60: '2', 64: '2', 61: '5' }, { 30: '6', 34: '6' });
+  assert.deepEqual(host.legalTargets(60).sort((a, b) => a - b), [30, 40, 50]);        // A-file: two empty squares, then the blue piece on A7 to strike
+  assert.deepEqual(host.legalTargets(62), []);                                        // C4 faces the lake on C5; its neighbours are its own
+  host.move(61, 51); await sync(host, guest); guest.move(34, 44); await sync(host, guest);   // red lieutenant B4→B5, blue E7→E6
+  host.move(51, 41); await sync(host, guest); guest.move(44, 45); await sync(host, guest);   // B5→B6, blue E6→F6
+  host.move(41, 40); await sync(host, guest); guest.move(45, 44); await sync(host, guest);   // B6→A6, blue back to E6
+  assert.deepEqual(host.legalTargets(60).sort((a, b) => a - b), [50, 61]);           // own lieutenant on A6 stops the run at A5; B4 is empty sideways
+  assert.throws(() => host.move(60, 30), GameError);                                  // no jumping over it to strike A7
+  assert.deepEqual(host.legalTargets(64).sort((a, b) => a - b), [44, 54]);           // E4: E5 empty, then the blue piece on E6
+  host.move(64, 44);                                                                  // run two squares and strike in the same turn
+  await sync(host, guest);
+  assert.equal(guest.view().lastCombat?.attacker.rank, '2');
+  assert.equal(guest.view().lastCombat?.result, 'defender');
+});
+
 test('the two-square rule forbids a fourth consecutive shuttle', async () => {
   const { host, guest } = await table({ 60: '6' }, { 30: '6' });
   host.move(60, 50); await sync(host, guest); guest.move(30, 40); await sync(host, guest);
