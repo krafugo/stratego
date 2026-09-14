@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=Cinzel:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+</helmet>
+<div style="{{ wrap }}">
+  <div style="{{ face }}">
+    <div style="{{ pattern }}"></div>
+    <sc-if value="{{ showIns }}" hint-placeholder-val="{{ true }}">
+      <svg viewBox="0 0 24 24" style="{{ insA }}"><path d="{{ insD }}" fill="currentColor" fillRule="{{ fr }}"></path></svg>
+      <svg viewBox="0 0 24 24" style="{{ insB }}"><path d="{{ insD }}" fill="currentColor" fillRule="{{ fr }}"></path></svg>
+    </sc-if>
+    <sc-if value="{{ showEmblem }}" hint-placeholder-val="{{ false }}">
+      <svg viewBox="0 0 24 24" style="{{ emb }}"><path d="{{ embD }}" fill="currentColor" fillRule="evenodd"></path></svg>
+    </sc-if>
+    <sc-if value="{{ showNum }}" hint-placeholder-val="{{ true }}">
+      <div style="{{ num }}">{{ numeral }}</div>
+    </sc-if>
+    <sc-if value="{{ isMoved }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ tickA }}"></div>
+      <div style="{{ tickB }}"></div>
+    </sc-if>
+    <div style="{{ sheen }}"></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:120,&quot;height&quot;:120},&quot;rank&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;10&quot;,&quot;9&quot;,&quot;8&quot;,&quot;7&quot;,&quot;6&quot;,&quot;5&quot;,&quot;4&quot;,&quot;3&quot;,&quot;2&quot;,&quot;S&quot;,&quot;B&quot;,&quot;F&quot;],&quot;default&quot;:&quot;7&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;army&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;red&quot;,&quot;blue&quot;],&quot;default&quot;:&quot;red&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;own&quot;,&quot;back&quot;,&quot;revealed&quot;,&quot;lost&quot;],&quot;default&quot;:&quot;own&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;size&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:48,&quot;min&quot;:24,&quot;max&quot;:120,&quot;unit&quot;:&quot;px&quot;,&quot;tsType&quot;:&quot;number&quot;},&quot;selected&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;moved&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const star = (cx, cy, R) => {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const a = (-90 + i * 36) * Math.PI / 180, rad = i % 2 ? R * 0.4 : R;
+    pts.push((cx + rad * Math.cos(a)).toFixed(2) + ' ' + (cy + rad * Math.sin(a)).toFixed(2));
+  }
+  return 'M' + pts.join('L') + 'Z';
+};
+const chev = y => `M12 ${y}L20 ${y + 4.5}L20 ${y + 6.9}L12 ${y + 2.4}L4 ${y + 6.9}L4 ${y + 4.5}Z`;
+const bar = y => `M4 ${y}H20V${y + 2.6}H4Z`;
+const DOT = 'M12 9.8A2.2 2.2 0 1 0 12 14.2A2.2 2.2 0 1 0 12 9.8Z';
+
+const INSIGNIA = {
+  '10': star(5.6, 12, 4.6) + star(12, 12, 4.6) + star(18.4, 12, 4.6),
+  '9': star(7.6, 12, 5.4) + star(16.4, 12, 5.4),
+  '8': star(12, 12, 9),
+  '7': chev(3) + chev(8.5) + chev(14),
+  '6': chev(5.5) + chev(12),
+  '5': chev(8.5),
+  '4': bar(5) + bar(10.7) + bar(16.4),
+  '3': 'M4 5H20V8.6H14.6L13.2 21H10.8L9.4 8.6H4Z',
+  '2': 'M3 10.2H13.5V5.6L21.5 12L13.5 18.4V13.8H3Z',
+  'S': 'M12 3.4A8.6 8.6 0 1 0 12 20.6A8.6 8.6 0 1 0 12 3.4ZM12 6.2A5.8 5.8 0 1 1 12 17.8A5.8 5.8 0 1 1 12 6.2Z' + DOT,
+  'B': 'M12 7.4A6.6 6.6 0 1 0 12 20.6A6.6 6.6 0 1 0 12 7.4ZM10.9 2.6H13.1V7.8H10.9ZM15.4 3.4L19.2 5.6L17.9 7.8L14.1 5.6Z',
+  'F': 'M4.6 2.6H7V21.4H4.6ZM7.6 4H19.4L15.9 8.6L19.4 13.2H7.6Z'
+};
+const EVENODD = { S: 1 };
+
+const EMBLEM = {
+  red: 'M12 1.5L22.5 12L12 22.5L1.5 12ZM12 6.2L17.8 12L12 17.8L6.2 12Z' + DOT,
+  blue: 'M12 1.5A10.5 10.5 0 1 0 12 22.5A10.5 10.5 0 1 0 12 1.5ZM12 6A6 6 0 1 1 12 18A6 6 0 1 1 12 6Z' + DOT
+};
+
+const ARMY = {
+  red: { c1: '#b13a41', c2: '#6f1b22', edge: '#4b1015', pat: 'repeating-linear-gradient(90deg,rgba(253,246,230,.10) 0 1.5px,transparent 1.5px 7px)' },
+  blue: { c1: '#3a5a8f', c2: '#1b2c50', edge: '#101d38', pat: 'repeating-linear-gradient(45deg,rgba(253,246,230,.10) 0 1.5px,transparent 1.5px 7px)' }
+};
+const GOLD = '#c9a45c';
+const INK = '#fdf6e6';
+
+class Component extends DCLogic {
+  renderVals() {
+    const p = this.props;
+    const rank = String(p.rank ?? '7');
+    const army = p.army === 'blue' ? 'blue' : 'red';
+    const mode = p.mode || 'own';
+    const s = Number(p.size ?? 48);
+    const sel = !!p.selected, moved = !!p.moved;
+    const a = ARMY[army];
+    const back = mode === 'back';
+    const lost = mode === 'lost';
+    const known = mode === 'revealed';
+    const compact = s < 40;
+
+    const radius = army === 'blue' ? s * 0.18 : s * 0.07;
+    const chamfer = army === 'red' ? (s * 0.22).toFixed(1) + 'px' : null;
+    const bw = Math.max(1, s * 0.028);
+
+    const wrap = [
+      `position:relative;width:${s}px;height:${s}px;flex:0 0 auto`,
+      `transform:translateY(${sel ? -s * 0.07 : 0}px)`,
+      `filter:${lost ? 'grayscale(1)' : 'none'}`,
+      `opacity:${lost ? 0.45 : 1}`,
+      `transition:transform .14s ease`
+    ].join(';');
+
+    const shadow = sel
+      ? `0 ${s * 0.14}px ${s * 0.22}px rgba(28,35,51,.38), 0 0 0 ${Math.max(2, s * 0.05)}px rgba(201,164,92,.85), 0 0 ${s * 0.5}px rgba(201,164,92,.55)`
+      : `0 ${s * 0.04}px ${s * 0.09}px rgba(28,35,51,.35), inset 0 ${bw}px 0 rgba(253,246,230,.18)`;
+
+    const face = [
+      'position:absolute;inset:0;overflow:hidden;display:flex;align-items:center;justify-content:center',
+      `background:linear-gradient(158deg,${a.c1} 0%,${a.c2} 100%)`,
+      `border:${bw}px solid ${a.edge}`,
+      `border-radius:${radius.toFixed(1)}px`,
+      chamfer ? `clip-path:polygon(${chamfer} 0,calc(100% - ${chamfer}) 0,100% ${chamfer},100% calc(100% - ${chamfer}),calc(100% - ${chamfer}) 100%,${chamfer} 100%,0 calc(100% - ${chamfer}),0 ${chamfer})` : '',
+      `box-shadow:${shadow}${known ? `, inset 0 0 0 ${Math.max(1.5, s * 0.045)}px ${GOLD}` : ''}`,
+      `color:${INK}`
+    ].filter(Boolean).join(';');
+
+    const insSize = s * 0.26;
+    const off = s * 0.055;
+    const insBase = `position:absolute;width:${insSize.toFixed(1)}px;height:${insSize.toFixed(1)}px;opacity:.8;color:${INK}`;
+
+    return {
+      wrap, face,
+      pattern: `position:absolute;inset:0;background:${a.pat};opacity:${back ? 1 : .55};pointer-events:none`,
+      sheen: `position:absolute;inset:0;background:linear-gradient(180deg,rgba(253,246,230,.16) 0%,rgba(253,246,230,0) 42%,rgba(28,35,51,.14) 100%);pointer-events:none`,
+      showIns: !back && !compact,
+      showEmblem: back,
+      showNum: !back,
+      insD: INSIGNIA[rank] || INSIGNIA['7'],
+      fr: EVENODD[rank] ? 'evenodd' : 'nonzero',
+      insA: `${insBase};left:${off}px;top:${off}px`,
+      insB: `${insBase};right:${off}px;bottom:${off}px;transform:rotate(180deg)`,
+      embD: EMBLEM[army],
+      emb: `position:absolute;width:${(s * (compact ? 0.52 : 0.46)).toFixed(1)}px;height:${(s * (compact ? 0.52 : 0.46)).toFixed(1)}px;color:${INK};opacity:.9`,
+      numeral: rank,
+      num: [
+        `position:relative;font-family:Oswald,'Arial Narrow',sans-serif;font-weight:600`,
+        `font-size:${(s * (rank === '10' ? 0.44 : 0.54)).toFixed(1)}px`,
+        `line-height:1;letter-spacing:${rank === '10' ? '-0.02em' : '0'}`,
+        `color:${INK};text-shadow:0 1px 1px rgba(28,35,51,.45)`,
+        `font-variant-numeric:tabular-nums`
+      ].join(';'),
+      isMoved: moved,
+      tickA: `position:absolute;left:${(s * 0.04).toFixed(1)}px;top:50%;width:${(s * 0.09).toFixed(1)}px;height:${(s * 0.22).toFixed(1)}px;transform:translateY(-50%);background:${GOLD};border-radius:${(s * 0.03).toFixed(1)}px`,
+      tickB: `position:absolute;right:${(s * 0.04).toFixed(1)}px;top:50%;width:${(s * 0.09).toFixed(1)}px;height:${(s * 0.22).toFixed(1)}px;transform:translateY(-50%);background:${GOLD};border-radius:${(s * 0.03).toFixed(1)}px`
+    };
+  }
+}
+</script>
+</body>
+</html>

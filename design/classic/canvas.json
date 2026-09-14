@@ -1,0 +1,14 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 760, "h": 900, "title": "Board · desktop" },
+    { "file": "Pieces.dc.html", "x": 860, "y": 0, "w": 1060, "h": 2380, "title": "Piece sheet" },
+    { "file": "Mobile.dc.html", "x": 0, "y": 1040, "w": 520, "h": 620, "title": "Board · phone" },
+    { "file": "Alternate.dc.html", "x": 0, "y": 1800, "w": 640, "h": 380, "title": "Option B · heraldic tile" },
+    { "file": "Token.dc.html", "x": 0, "y": 2320, "w": 160, "h": 160, "title": "Token component" }
+  ],
+  "annotations": [
+    { "id": "figures-note", "x": 0, "y": -150, "w": 420, "text": "Classic direction: standing tiles with number + rank name + an original figure silhouette on a cream label. The figures are drawn for this project (hats and attributes per rank) — none of the licensed Stratego artwork is reproduced." },
+    { "id": "option-b-note", "x": 700, "y": 1800, "w": 240, "text": "Option B is a low-fi alternate. Say which tile style you want and I will port it into src/tokens.ts and src/style.css on the feature branch." }
+  ],
+  "launch": { "view": "canvas" }
+}

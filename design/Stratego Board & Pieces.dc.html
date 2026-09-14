@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Oswald:wght@400;500;600&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #e2dccd; }
+  a { color: #9c7735; text-decoration: none; border-bottom: 1px solid rgba(156,119,53,.4); }
+  a:hover { color: #6f1b22; border-bottom-color: rgba(111,27,34,.5); }
+  @keyframes stFlash { 0%,100% { opacity: .15 } 45% { opacity: .95 } }
+  @keyframes stTurn { 0%,100% { box-shadow: 0 0 0 3px rgba(201,164,92,.45), 0 0 22px rgba(201,164,92,.28) } 50% { box-shadow: 0 0 0 3px rgba(201,164,92,.9), 0 0 34px rgba(201,164,92,.5) } }
+</style>
+</helmet>
+<section style="display:flex;flex-direction:column;gap:60px;padding:60px 64px 96px;background:#e2dccd;font-family:'Source Sans 3',system-ui,sans-serif;color:#1c2333;min-width:1480px">
+
+  <header style="display:flex;flex-direction:column;gap:14px;max-width:900px">
+    <div style="font-family:Oswald,sans-serif;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:#9c7735">Handoff canvas · 7 artboards</div>
+    <h1 style="margin:0;font-family:Cinzel,Georgia,serif;font-weight:700;font-size:52px;line-height:1.05;letter-spacing:-.01em">Stratego — Board &amp; Piece Set</h1>
+    <p style="margin:0;font-size:17px;line-height:1.6;color:#4a5266;text-wrap:pretty">Light parchment theme, Napoleonic field-officer insignia. Red and blue differ on three independent channels — <strong>silhouette</strong> (chamfered octagon vs. rounded square), <strong>surface pattern</strong> (vertical pinstripe vs. 45° twill) and <strong>emblem</strong> (lozenge vs. roundel) — so the armies stay separable without hue. Every token is one element: gradient face, corner insignia mirrored at 180° so it reads from either side of the table, rank numeral centred.</p>
+  </header>
+
+  <div id="1a" style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:14px">
+      <span style="font-family:Oswald,sans-serif;font-size:12px;font-weight:500;letter-spacing:.16em;background:#1c2333;color:#f4efe4;padding:5px 9px;border-radius:3px">1a</span>
+      <h2 style="margin:0;font-family:Cinzel,Georgia,serif;font-size:26px;font-weight:600">Palette &amp; type</h2>
+      <span style="font-size:14px;color:#4a5266">CSS custom properties + Google Fonts pairing</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:24px;align-items:start">
+      <div style="background:#f4efe4;border:1px solid #d6cdb6;border-radius:10px;padding:26px;box-shadow:0 2px 14px rgba(28,35,51,.07)">
+        <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px">
+          <sc-for list="{{ palette }}" as="p" hint-placeholder-count="16">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="{{ p.swatch }}"></div>
+              <div style="font-family:Oswald,sans-serif;font-size:11.5px;letter-spacing:.03em;color:#1c2333">{{ p.name }}</div>
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#4a5266">{{ p.hex }}</div>
+              <div style="font-size:11.5px;line-height:1.35;color:#8a8370">{{ p.note }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:24px;padding-top:20px;border-top:1px solid #ddd4bd;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.75;color:#4a5266;white-space:pre-wrap">{{ cssVars }}</div>
+      </div>
+      <div style="background:#f4efe4;border:1px solid #d6cdb6;border-radius:10px;padding:26px;box-shadow:0 2px 14px rgba(28,35,51,.07);display:flex;flex-direction:column;gap:22px">
+        <div>
+          <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;margin-bottom:8px">Display — Cinzel 600/700</div>
+          <div style="font-family:Cinzel,Georgia,serif;font-weight:700;font-size:38px;line-height:1.1">Marshal takes Colonel</div>
+          <div style="font-size:13px;color:#4a5266;margin-top:8px">Titles, battle-report headings, rules-guide piece names. 26–52px. Never below 18px.</div>
+        </div>
+        <div>
+          <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;margin-bottom:8px">Numerals &amp; labels — Oswald 500/600</div>
+          <div style="font-family:Oswald,sans-serif;font-weight:600;font-size:40px;letter-spacing:.02em;font-variant-numeric:tabular-nums">10 9 8 7 6 5 4 3 2 S B F</div>
+          <div style="font-size:13px;color:#4a5266;margin-top:8px">Token rank, board coordinates, counters, small caps labels. Condensed + tabular: the 30px token reads because the glyph is narrow and the stem weight stays above 2px.</div>
+        </div>
+        <div>
+          <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;margin-bottom:8px">Body — Source Sans 3 400/600</div>
+          <div style="font-size:16px;line-height:1.6;color:#1c2333">The Scout moves any number of open squares in a straight line, but reveals itself when it strikes. Bombs defeat every attacker except the Miner.</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:18px;border-top:1px solid #ddd4bd">
+          <sc-for list="{{ contrast }}" as="c" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:4px;padding:10px 12px;background:#ece5d3;border-radius:6px;min-width:132px">
+              <span style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.08em;color:#4a5266">{{ c.k }}</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#1c2333">{{ c.v }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1b" style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:14px">
+      <span style="font-family:Oswald,sans-serif;font-size:12px;font-weight:500;letter-spacing:.16em;background:#1c2333;color:#f4efe4;padding:5px 9px;border-radius:3px">1b</span>
+      <h2 style="margin:0;font-family:Cinzel,Georgia,serif;font-size:26px;font-weight:600">Token sheet</h2>
+      <span style="font-size:14px;color:#4a5266">12 pieces × 2 armies × 74 / 48 / 30 px, then every state</span>
+    </div>
+    <div style="background:#f4efe4;border:1px solid #d6cdb6;border-radius:10px;padding:28px;box-shadow:0 2px 14px rgba(28,35,51,.07);display:flex;flex-direction:column;gap:26px">
+      <div style="display:grid;grid-template-columns:150px repeat(2,minmax(0,1fr));gap:0 28px;align-items:center">
+        <div></div>
+        <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;padding-bottom:10px">Red army — own piece</div>
+        <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;padding-bottom:10px">Blue army — own piece</div>
+        <sc-for list="{{ pieces }}" as="p" hint-placeholder-count="12">
+          <div style="display:flex;flex-direction:column;gap:2px;padding:12px 0;border-top:1px solid #e3dbc7">
+            <span style="font-family:Cinzel,Georgia,serif;font-size:16px;font-weight:600">{{ p.name }}</span>
+            <span style="font-family:Oswald,sans-serif;font-size:11.5px;letter-spacing:.1em;color:#8a8370">{{ p.meta }}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:18px;padding:12px 0;border-top:1px solid #e3dbc7">
+            <dc-import name="Token" rank="{{ p.rank }}" army="red" mode="own" size="{{ 74 }}" hint-size="74px,74px"></dc-import>
+            <dc-import name="Token" rank="{{ p.rank }}" army="red" mode="own" size="{{ 48 }}" hint-size="48px,48px"></dc-import>
+            <dc-import name="Token" rank="{{ p.rank }}" army="red" mode="own" size="{{ 30 }}" hint-size="30px,30px"></dc-import>
+          </div>
+          <div style="display:flex;align-items:center;gap:18px;padding:12px 0;border-top:1px solid #e3dbc7">
+            <dc-import name="Token" rank="{{ p.rank }}" army="blue" mode="own" size="{{ 74 }}" hint-size="74px,74px"></dc-import>
+            <dc-import name="Token" rank="{{ p.rank }}" army="blue" mode="own" size="{{ 48 }}" hint-size="48px,48px"></dc-import>
+            <dc-import name="Token" rank="{{ p.rank }}" army="blue" mode="own" size="{{ 30 }}" hint-size="30px,30px"></dc-import>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:grid;grid-template-columns:210px repeat(2,minmax(0,1fr));gap:0 28px;align-items:center;border-top:2px solid #1c2333;padding-top:8px">
+        <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;padding:14px 0">State</div>
+        <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;padding:14px 0">Red · 74 / 48 / 30</div>
+        <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735;padding:14px 0">Blue · 74 / 48 / 30</div>
+        <sc-for list="{{ states }}" as="s" hint-placeholder-count="6">
+          <div style="display:flex;flex-direction:column;gap:3px;padding:16px 0;border-top:1px solid #e3dbc7">
+            <span style="font-family:Oswald,sans-serif;font-size:13px;font-weight:500;letter-spacing:.06em">{{ s.label }}</span>
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#9c7735">{{ s.cls }}</span>
+            <span style="font-size:12.5px;line-height:1.45;color:#4a5266">{{ s.spec }}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:22px;padding:16px 0;border-top:1px solid #e3dbc7">
+            <dc-import name="Token" rank="{{ s.rank }}" army="red" mode="{{ s.mode }}" size="{{ 74 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="74px,74px"></dc-import>
+            <dc-import name="Token" rank="{{ s.rank }}" army="red" mode="{{ s.mode }}" size="{{ 48 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="48px,48px"></dc-import>
+            <dc-import name="Token" rank="{{ s.rank }}" army="red" mode="{{ s.mode }}" size="{{ 30 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="30px,30px"></dc-import>
+          </div>
+          <div style="display:flex;align-items:center;gap:22px;padding:16px 0;border-top:1px solid #e3dbc7">
+            <dc-import name="Token" rank="{{ s.rank }}" army="blue" mode="{{ s.mode }}" size="{{ 74 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="74px,74px"></dc-import>
+            <dc-import name="Token" rank="{{ s.rank }}" army="blue" mode="{{ s.mode }}" size="{{ 48 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="48px,48px"></dc-import>
+            <dc-import name="Token" rank="{{ s.rank }}" army="blue" mode="{{ s.mode }}" size="{{ 30 }}" selected="{{ s.sel }}" moved="{{ s.moved }}" hint-size="30px,30px"></dc-import>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:26px;border-top:2px solid #1c2333;padding-top:22px">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735">Token geometry — % of token size S</div>
+          <sc-for list="{{ tokenSpec }}" as="t" hint-placeholder-count="10">
+            <div style="display:flex;gap:14px;font-size:13px;line-height:1.5;padding:5px 0;border-bottom:1px dotted #ddd4bd">
+              <span style="flex:0 0 152px;font-family:Oswald,sans-serif;font-size:12px;letter-spacing:.05em;color:#1c2333">{{ t.k }}</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#4a5266">{{ t.v }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735">Army emblem paths — 24×24, fill-rule evenodd</div>
+          <sc-for list="{{ emblems }}" as="e" hint-placeholder-count="2">
+            <div style="display:flex;gap:14px;align-items:flex-start;padding:10px 0;border-bottom:1px dotted #ddd4bd">
+              <div style="{{ e.chip }}"><svg viewBox="0 0 24 24" style="width:34px;height:34px;color:#fdf6e6"><path d="{{ e.d }}" fill="currentColor" fillRule="evenodd"></path></svg></div>
+              <div style="display:flex;flex-direction:column;gap:5px;min-width:0">
+                <span style="font-family:Oswald,sans-serif;font-size:12.5px;letter-spacing:.06em">{{ e.name }}</span>
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.5;color:#4a5266;word-break:break-all">{{ e.d }}</span>
+              </div>
+            </div>
+          </sc-for>
+          <div style="font-size:12.5px;line-height:1.5;color:#4a5266">Emblem fills 46% of S on the hidden back (52% below 40px, where corner insignia are dropped). The back also switches the surface pattern to full opacity — that plus the silhouette is what a colour-blind player reads.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1c" style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:14px">
+      <span style="font-family:Oswald,sans-serif;font-size:12px;font-weight:500;letter-spacing:.16em;background:#1c2333;color:#f4efe4;padding:5px 9px;border-radius:3px">1c</span>
+      <h2 style="margin:0;font-family:Cinzel,Georgia,serif;font-size:26px;font-weight:600">Insignia set</h2>
+      <span style="font-size:14px;color:#4a5266">24×24 viewBox, single path, <span style="font-family:ui-monospace,Menlo,monospace">fill="currentColor"</span></span>
+    </div>
+    <div style="background:#f4efe4;border:1px solid #d6cdb6;border-radius:10px;padding:28px;box-shadow:0 2px 14px rgba(28,35,51,.07);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px">
+      <sc-for list="{{ insignia }}" as="g" hint-placeholder-count="12">
+        <div style="display:flex;gap:16px;align-items:flex-start;padding:16px;background:#ece5d3;border-radius:8px">
+          <div style="position:relative;width:96px;height:96px;flex:0 0 auto;background:#f4efe4;border:1px solid #d6cdb6;border-radius:6px;background-image:linear-gradient(#ddd4bd 1px,transparent 1px),linear-gradient(90deg,#ddd4bd 1px,transparent 1px);background-size:8px 8px;background-position:-1px -1px">
+            <svg viewBox="0 0 24 24" style="position:absolute;inset:0;width:96px;height:96px;color:#1c2333"><path d="{{ g.d }}" fill="currentColor" fillRule="{{ g.fr }}"></path></svg>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+            <span style="font-family:Cinzel,Georgia,serif;font-size:15px;font-weight:600">{{ g.rank }} · {{ g.name }}</span>
+            <span style="font-size:12px;line-height:1.4;color:#4a5266">{{ g.note }}</span>
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;line-height:1.55;color:#6b6552;word-break:break-all">{{ g.d }}</span>
+          </div>
+        </div>
+      </sc-for>
+      <div style="grid-column:1/-1;font-size:13px;line-height:1.6;color:#4a5266;padding-top:6px;border-top:1px solid #ddd4bd">Geometry is closed subpaths only — star polygons (R 4.6–9, inner radius 0.4R), chevrons (8-unit half-span, 4.5 rise, 2.4 stroke), bars (16×2.6) and circles as two arc commands. Only the Spy uses <span style="font-family:ui-monospace,Menlo,monospace">fill-rule="evenodd"</span>; every other glyph is <span style="font-family:ui-monospace,Menlo,monospace">nonzero</span> and safe to render either way.</div>
+    </div>
+  </div>
+
+  <div id="1d" style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:14px">
+      <span style="font-family:Oswald,sans-serif;font-size:12px;font-weight:500;letter-spacing:.16em;background:#1c2333;color:#f4efe4;padding:5px 9px;border-radius:3px">1d</span>
+      <h2 style="margin:0;font-family:Cinzel,Georgia,serif;font-size:26px;font-weight:600">Board — desktop, mid-game</h2>
+      <span style="font-size:14px;color:#4a5266">650 px outer · 58 px cells · red to move</span>
+    </div>
+    <div style="display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap">
+      <div style="background:#f4efe4;border:1px solid #d6cdb6;border-radius:10px;padding:28px;box-shadow:0 2px 14px rgba(28,35,51,.07)">
+        <div style="width:650px;box-sizing:border-box;padding:22px 22px 12px;background:linear-gradient(150deg,#55402f 0%,#3d2b1f 62%,#2c1e15 100%);border-radius:14px;animation:stTurn 2.6s ease-in-out infinite">
+          <div style="display:flex;gap:8px">
+            <div style="display:flex;flex-direction:column;width:18px">
+              <sc-for list="{{ rowLabels }}" as="r" hint-placeholder-count="10">
+                <div style="height:58px;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-size:12px;color:#d8c39a;letter-spacing:.04em">{{ r }}</div>
+              </sc-for>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(10,58px);grid-auto-rows:58px;border:2px solid #2c1e15;border-radius:4px;overflow:hidden;box-shadow:inset 0 2px 10px rgba(0,0,0,.35)">
+              <sc-for list="{{ cells }}" as="c" hint-placeholder-count="100">
+                <div style="{{ c.style }}">
+                  <sc-if value="{{ c.marker }}" hint-placeholder-val="{{ false }}"><div style="{{ c.markerStyle }}"></div></sc-if>
+                  <sc-if value="{{ c.hasToken }}" hint-placeholder-val="{{ false }}">
+                    <dc-import name="Token" rank="{{ c.rank }}" army="{{ c.army }}" mode="{{ c.mode }}" size="{{ 46 }}" selected="{{ c.sel }}" moved="{{ c.moved }}" hint-size="46px,46px"></dc-import>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <div style="width:18px"></div>
+            <div style="display:grid;grid-template-columns:repeat(10,58px)">
+              <sc-for list="{{ colLabels }}" as="c" hint-placeholder-count="10">
+                <div style="text-align:center;font-family:Oswald,sans-serif;font-size:12px;color:#d8c39a;letter-spacing:.1em">{{ c }}</div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:13px;color:#4a5266">
+          <span><strong style="font-family:Oswald,sans-serif;letter-spacing:.06em">E5 selected</strong> — Major (7). Legal: E4, F5. Capture: E6.</span>
+          <span style="font-family:Oswald,sans-serif;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9c7735">Your turn — frame glow active</span>
+        </div>
+      </div>
+      <div style="background:#f4efe4;border:1px solid #d6cdb6;border-radius:10px;padding:26px;box-shadow:0 2px 14px rgba(28,35,51,.07);width:520px;display:flex;flex-direction:column;gap:16px">
+        <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735">Cell states — isolated, 58 px</div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+          <sc-for list="{{ legend }}" as="l" hint-placeholder-count="10">
+            <div style="display:flex;gap:12px;align-items:flex-start">
+              <div style="{{ l.style }}">
+                <sc-if value="{{ l.marker }}" hint-placeholder-val="{{ false }}"><div style="{{ l.markerStyle }}"></div></sc-if>
+                <sc-if value="{{ l.hasToken }}" hint-placeholder-val="{{ false }}">
+                  <dc-import name="Token" rank="{{ l.rank }}" army="{{ l.army }}" mode="{{ l.mode }}" size="{{ 46 }}" selected="{{ l.sel }}" hint-size="46px,46px"></dc-import>
+                </sc-if>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0;padding-top:2px">
+                <span style="font-family:Oswald,sans-serif;font-size:12.5px;letter-spacing:.05em">{{ l.label }}</span>
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;line-height:1.5;color:#6b6552;word-break:break-word">{{ l.spec }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;padding-top:16px;border-top:1px solid #ddd4bd">
+          <sc-for list="{{ boardSpec }}" as="b" hint-placeholder-count="8">
+            <div style="display:flex;gap:14px;font-size:13px;line-height:1.5">
+              <span style="flex:0 0 140px;font-family:Oswald,sans-serif;font-size:12px;letter-spacing:.05em">{{ b.k }}</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#4a5266;min-width:0">{{ b.v }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1e" style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:14px">
+      <span style="font-family:Oswald,sans-serif;font-size:12px;font-weight:500;letter-spacing:.16em;background:#1c2333;color:#f4efe4;padding:5px 9px;border-radius:3px">1e</span>
+      <h2 style="margin:0;font-family:Cinzel,Georgia,serif;font-size:26px;font-weight:600">Board — mobile 375 px</h2>
+      <span style="font-size:14px;color:#4a5266">same state · 33 px cells · 28 px tokens</span>
+    </div>
+    <div style="display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap">
+      <div style="background:#f4efe4;border:1px solid #d6cdb6;border-radius:10px;padding:20px;box-shadow:0 2px 14px rgba(28,35,51,.07)">
+        <div style="width:375px;box-sizing:border-box;padding:10px 10px 4px;background:linear-gradient(150deg,#55402f 0%,#3d2b1f 62%,#2c1e15 100%);border-radius:10px;animation:stTurn 2.6s ease-in-out infinite">
+          <div style="display:flex;gap:4px">
+            <div style="display:flex;flex-direction:column;width:12px">
+              <sc-for list="{{ rowLabels }}" as="r" hint-placeholder-count="10">
+                <div style="height:33px;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-size:9px;color:#d8c39a">{{ r }}</div>
+              </sc-for>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(10,33px);grid-auto-rows:33px;border:1.5px solid #2c1e15;border-radius:3px;overflow:hidden;box-shadow:inset 0 1px 6px rgba(0,0,0,.35)">
+              <sc-for list="{{ cellsM }}" as="c" hint-placeholder-count="100">
+                <div style="{{ c.style }}">
+                  <sc-if value="{{ c.marker }}" hint-placeholder-val="{{ false }}"><div style="{{ c.markerStyle }}"></div></sc-if>
+                  <sc-if value="{{ c.hasToken }}" hint-placeholder-val="{{ false }}">
+                    <dc-import name="Token" rank="{{ c.rank }}" army="{{ c.army }}" mode="{{ c.mode }}" size="{{ 28 }}" selected="{{ c.sel }}" moved="{{ c.moved }}" hint-size="28px,28px"></dc-import>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;gap:4px;margin-top:3px">
+            <div style="width:12px"></div>
+            <div style="display:grid;grid-template-columns:repeat(10,33px)">
+              <sc-for list="{{ colLabels }}" as="c" hint-placeholder-count="10">
+                <div style="text-align:center;font-family:Oswald,sans-serif;font-size:9px;color:#d8c39a;letter-spacing:.06em">{{ c }}</div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="background:#f4efe4;border:1px solid #d6cdb6;border-radius:10px;padding:26px;box-shadow:0 2px 14px rgba(28,35,51,.07);width:460px;display:flex;flex-direction:column;gap:12px">
+        <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735">Mobile deltas</div>
+        <sc-for list="{{ mobileSpec }}" as="m" hint-placeholder-count="7">
+          <div style="display:flex;gap:14px;font-size:13px;line-height:1.5;padding:6px 0;border-bottom:1px dotted #ddd4bd">
+            <span style="flex:0 0 150px;font-family:Oswald,sans-serif;font-size:12px;letter-spacing:.05em">{{ m.k }}</span>
+            <span style="color:#4a5266;min-width:0">{{ m.v }}</span>
+          </div>
+        </sc-for>
+        <div style="display:flex;align-items:center;gap:14px;margin-top:8px;padding:14px;background:#ece5d3;border-radius:8px">
+          <dc-import name="Token" rank="10" army="red" mode="own" size="{{ 28 }}" hint-size="28px,28px"></dc-import>
+          <dc-import name="Token" rank="2" army="blue" mode="back" size="{{ 28 }}" hint-size="28px,28px"></dc-import>
+          <dc-import name="Token" rank="9" army="blue" mode="revealed" size="{{ 28 }}" hint-size="28px,28px"></dc-import>
+          <span style="font-size:12.5px;line-height:1.45;color:#4a5266">At 28 px the corner insignia are dropped and the numeral grows to 54% of S — rank stays the only primary signal.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1f" style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:14px">
+      <span style="font-family:Oswald,sans-serif;font-size:12px;font-weight:500;letter-spacing:.16em;background:#1c2333;color:#f4efe4;padding:5px 9px;border-radius:3px">1f</span>
+      <h2 style="margin:0;font-family:Cinzel,Georgia,serif;font-size:26px;font-weight:600">Battle report card</h2>
+    </div>
+    <div style="display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start">
+      <div style="width:420px;background:#f4efe4;border:1px solid #d6cdb6;border-radius:12px;box-shadow:0 8px 28px rgba(28,35,51,.14);overflow:hidden">
+        <div style="padding:14px 22px;background:#1c2333;color:#f4efe4;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-family:Cinzel,Georgia,serif;font-size:16px;font-weight:600;letter-spacing:.04em">Battle at E6</span>
+          <span style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.16em;color:#c9a45c">Move 24</span>
+        </div>
+        <div style="padding:26px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;flex:1">
+            <dc-import name="Token" rank="7" army="red" mode="own" size="{{ 74 }}" hint-size="74px,74px"></dc-import>
+            <span style="font-family:Cinzel,Georgia,serif;font-size:15px;font-weight:600">Major</span>
+            <span style="font-family:Oswald,sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#4a5266">Attacker</span>
+            <span style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.1em;padding:3px 9px;border-radius:20px;background:#e4ddca;color:#2f6a3f;border:1px solid #bcd0ac">Wins</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto">
+            <span style="font-family:Cinzel,Georgia,serif;font-size:22px;color:#c9a45c">VS</span>
+            <div style="width:1px;height:54px;background:linear-gradient(#ddd4bd,#c9a45c,#ddd4bd)"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;flex:1">
+            <dc-import name="Token" rank="5" army="blue" mode="lost" size="{{ 74 }}" hint-size="74px,74px"></dc-import>
+            <span style="font-family:Cinzel,Georgia,serif;font-size:15px;font-weight:600;color:#6b6552">Lieutenant</span>
+            <span style="font-family:Oswald,sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#4a5266">Defender</span>
+            <span style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.1em;padding:3px 9px;border-radius:20px;background:#e4ddca;color:#8a3b3b;border:1px solid #d6b3b3">Removed</span>
+          </div>
+        </div>
+        <div style="padding:18px 22px;background:#ece5d3;border-top:1px solid #ddd4bd;font-size:15px;line-height:1.55;color:#1c2333;text-wrap:pretty">Red <strong>Major&nbsp;(7)</strong> defeats blue <strong>Lieutenant&nbsp;(5)</strong> and occupies E6. Blue now knows your Major.</div>
+        <div style="padding:14px 22px;display:flex;align-items:center;gap:14px;border-top:1px solid #ddd4bd">
+          <span style="font-family:Oswald,sans-serif;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#8a8370">Blue losses</span>
+          <div style="display:flex;gap:6px">
+            <dc-import name="Token" rank="5" army="blue" mode="lost" size="{{ 30 }}" hint-size="30px,30px"></dc-import>
+            <dc-import name="Token" rank="2" army="blue" mode="lost" size="{{ 30 }}" hint-size="30px,30px"></dc-import>
+            <dc-import name="Token" rank="3" army="blue" mode="lost" size="{{ 30 }}" hint-size="30px,30px"></dc-import>
+            <dc-import name="Token" rank="B" army="blue" mode="lost" size="{{ 30 }}" hint-size="30px,30px"></dc-import>
+          </div>
+        </div>
+      </div>
+      <div style="width:420px;background:#f4efe4;border:1px solid #d6cdb6;border-radius:10px;padding:24px;box-shadow:0 2px 14px rgba(28,35,51,.07);display:flex;flex-direction:column;gap:10px">
+        <div style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#9c7735">Card spec</div>
+        <sc-for list="{{ cardSpec }}" as="s" hint-placeholder-count="8">
+          <div style="display:flex;gap:14px;font-size:13px;line-height:1.5;padding:6px 0;border-bottom:1px dotted #ddd4bd">
+            <span style="flex:0 0 140px;font-family:Oswald,sans-serif;font-size:12px;letter-spacing:.05em">{{ s.k }}</span>
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#4a5266;min-width:0">{{ s.v }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div id="1g" style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:14px">
+      <span style="font-family:Oswald,sans-serif;font-size:12px;font-weight:500;letter-spacing:.16em;background:#1c2333;color:#f4efe4;padding:5px 9px;border-radius:3px">1g</span>
+      <h2 style="margin:0;font-family:Cinzel,Georgia,serif;font-size:26px;font-weight:600">Rules-guide piece cards</h2>
+      <span style="font-size:14px;color:#4a5266">340 × 148 px · 74 px token</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px">
+      <sc-for list="{{ cards }}" as="c" hint-placeholder-count="4">
+        <div style="display:flex;gap:18px;padding:20px;background:#f4efe4;border:1px solid #d6cdb6;border-radius:10px;box-shadow:0 2px 10px rgba(28,35,51,.06)">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:0 0 auto">
+            <dc-import name="Token" rank="{{ c.rank }}" army="red" mode="own" size="{{ 74 }}" hint-size="74px,74px"></dc-import>
+            <span style="font-family:Oswald,sans-serif;font-size:10.5px;letter-spacing:.12em;color:#8a8370">×{{ c.count }}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px;min-width:0">
+            <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+              <span style="font-family:Cinzel,Georgia,serif;font-size:19px;font-weight:600">{{ c.name }}</span>
+              <span style="font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.12em;padding:2px 8px;border-radius:3px;background:#1c2333;color:#f4efe4">{{ c.tag }}</span>
+            </div>
+            <p style="margin:0;font-size:14px;line-height:1.5;color:#4a5266;text-wrap:pretty">{{ c.desc }}</p>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;feltColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#6d7d5a&quot;,&quot;#5f7460&quot;,&quot;#7a7a54&quot;,&quot;#5c6b7a&quot;],&quot;default&quot;:&quot;#6d7d5a&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Board&quot;}}">
+const star = (cx, cy, R) => {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const a = (-90 + i * 36) * Math.PI / 180, rad = i % 2 ? R * 0.4 : R;
+    pts.push((cx + rad * Math.cos(a)).toFixed(2) + ' ' + (cy + rad * Math.sin(a)).toFixed(2));
+  }
+  return 'M' + pts.join('L') + 'Z';
+};
+const chev = y => `M12 ${y}L20 ${y + 4.5}L20 ${y + 6.9}L12 ${y + 2.4}L4 ${y + 6.9}L4 ${y + 4.5}Z`;
+const bar = y => `M4 ${y}H20V${y + 2.6}H4Z`;
+const DOT = 'M12 9.8A2.2 2.2 0 1 0 12 14.2A2.2 2.2 0 1 0 12 9.8Z';
+
+const INSIGNIA = {
+  '10': star(5.6, 12, 4.6) + star(12, 12, 4.6) + star(18.4, 12, 4.6),
+  '9': star(7.6, 12, 5.4) + star(16.4, 12, 5.4),
+  '8': star(12, 12, 9),
+  '7': chev(3) + chev(8.5) + chev(14),
+  '6': chev(5.5) + chev(12),
+  '5': chev(8.5),
+  '4': bar(5) + bar(10.7) + bar(16.4),
+  '3': 'M4 5H20V8.6H14.6L13.2 21H10.8L9.4 8.6H4Z',
+  '2': 'M3 10.2H13.5V5.6L21.5 12L13.5 18.4V13.8H3Z',
+  'S': 'M12 3.4A8.6 8.6 0 1 0 12 20.6A8.6 8.6 0 1 0 12 3.4ZM12 6.2A5.8 5.8 0 1 1 12 17.8A5.8 5.8 0 1 1 12 6.2Z' + DOT,
+  'B': 'M12 7.4A6.6 6.6 0 1 0 12 20.6A6.6 6.6 0 1 0 12 7.4ZM10.9 2.6H13.1V7.8H10.9ZM15.4 3.4L19.2 5.6L17.9 7.8L14.1 5.6Z',
+  'F': 'M4.6 2.6H7V21.4H4.6ZM7.6 4H19.4L15.9 8.6L19.4 13.2H7.6Z'
+};
+const EMBLEM = {
+  red: 'M12 1.5L22.5 12L12 22.5L1.5 12ZM12 6.2L17.8 12L12 17.8L6.2 12Z' + DOT,
+  blue: 'M12 1.5A10.5 10.5 0 1 0 12 22.5A10.5 10.5 0 1 0 12 1.5ZM12 6A6 6 0 1 1 12 18A6 6 0 1 1 12 6Z' + DOT
+};
+
+const PIECES = [
+  ['10', 'Marshal', 1, 'Highest rank', 'Beats everything except an unmarked Bomb; dies to the Spy if the Spy strikes first.', 'Three stars'],
+  ['9', 'General', 1, 'Rank 9', 'Second in command. Loses only to the Marshal and to Bombs.', 'Two stars'],
+  ['8', 'Colonel', 2, 'Rank 8', 'Mid-command backbone. Often used to probe the enemy centre.', 'One star'],
+  ['7', 'Major', 3, 'Rank 7', 'Reliable attacker for clearing rank 6 and below.', 'Three chevrons'],
+  ['6', 'Captain', 4, 'Rank 6', 'Workhorse. Trades well against unknown mid-rank pieces.', 'Two chevrons'],
+  ['5', 'Lieutenant', 4, 'Rank 5', 'Cheap scouting weight for the second wave.', 'One chevron'],
+  ['4', 'Sergeant', 4, 'Rank 4', 'Front-line filler; screens the Miners.', 'Three bars'],
+  ['3', 'Miner', 5, 'Defuses bombs', 'Only piece that can defuse a Bomb. Protect them — without Miners, bombed lanes stay closed.', 'Pick head'],
+  ['2', 'Scout', 8, 'Moves any distance', 'Moves any number of open squares in a straight line. Reveals itself when it attacks.', 'Arrow'],
+  ['S', 'Spy', 1, 'Kills the Marshal', 'Defeats the Marshal when the Spy attacks. Loses to everything else.', 'Monocle ring'],
+  ['B', 'Bomb', 6, 'Immovable', 'Destroys any attacker except a Miner. Cannot move.', 'Shell + fuse'],
+  ['F', 'Flag', 1, 'Objective', 'Capture the enemy Flag to win. Cannot move.', 'Standard']
+];
+
+const FELT_A = '#6d7d5a', FELT_B = '#66765a', GOLD = '#c9a45c', ALERT = '#d1504f';
+const COLS = 'ABCDEFGHIJ'.split('');
+const LAKES = new Set(['C5', 'C6', 'D5', 'D6', 'G5', 'G6', 'H5', 'H6']);
+
+const PLACE = {
+  A1: ['red', 'B', 'own'], B1: ['red', 'F', 'own'], C1: ['red', 'B', 'own'],
+  E2: ['red', '10', 'own'], F2: ['red', '8', 'own'], H2: ['red', 'S', 'own'],
+  D4: ['red', '3', 'own', { moved: 1 }], I3: ['red', '2', 'own', { moved: 1 }],
+  E5: ['red', '7', 'own', { sel: 1 }],
+  E6: ['blue', '2', 'back'], H7: ['blue', '9', 'revealed', { moved: 1 }],
+  B10: ['blue', '6', 'back'], D10: ['blue', 'B', 'back'], G10: ['blue', 'F', 'back'],
+  F9: ['blue', '4', 'back'], C8: ['blue', '8', 'back'], J8: ['blue', '5', 'back'],
+  I10: ['blue', 'B', 'back']
+};
+const STATE = { E4: 'legal', F5: 'legal', E6: 'capture', H9: 'from', H7: 'to', B4: 'flash', E5: 'selected' };
+
+class Component extends DCLogic {
+  cell(id, col, row, size) {
+    const lake = LAKES.has(id);
+    const st = STATE[id] || (lake ? 'lake' : 'empty');
+    const p = PLACE[id];
+    const flags = (p && p[3]) || {};
+    const base = (col + row) % 2 === 0 ? FELT_A : FELT_B;
+    const s = [
+      'position:relative;display:flex;align-items:center;justify-content:center',
+      'box-shadow:inset 0 0 0 1px rgba(28,35,51,.10)'
+    ];
+    if (lake) {
+      s.push(`background:linear-gradient(165deg,#4b82a1 0%,#3f7391 55%,#2e5a74 100%)`);
+      s.push(`background-image:repeating-linear-gradient(0deg,rgba(253,246,230,.10) 0 1px,transparent 1px 6px),linear-gradient(165deg,#4b82a1,#2e5a74)`);
+      s.push('box-shadow:inset 0 2px 8px rgba(0,0,0,.38),inset 0 0 0 1px rgba(28,35,51,.25)');
+    } else if (st === 'selected') {
+      s.push(`background:${base};box-shadow:inset 0 0 0 ${Math.max(2, size * 0.052).toFixed(1)}px ${GOLD},inset 0 0 ${size * 0.4}px rgba(201,164,92,.35)`);
+    } else if (st === 'capture') {
+      s.push(`background:${base};box-shadow:inset 0 0 0 ${Math.max(2, size * 0.052).toFixed(1)}px ${ALERT},inset 0 0 ${size * 0.34}px rgba(209,80,79,.3)`);
+    } else if (st === 'to') {
+      s.push(`background:linear-gradient(0deg,rgba(201,164,92,.18),rgba(201,164,92,.18)),${base};box-shadow:inset 0 0 0 1.5px rgba(201,164,92,.55)`);
+    } else if (st === 'from') {
+      s.push(`background:linear-gradient(0deg,rgba(201,164,92,.10),rgba(201,164,92,.10)),${base};box-shadow:inset 0 0 0 1px rgba(28,35,51,.10)`);
+    } else if (st === 'setup') {
+      s.push(`background:linear-gradient(0deg,rgba(201,164,92,.08),rgba(201,164,92,.08)),${base};box-shadow:inset 0 0 0 1.5px rgba(201,164,92,.45)`);
+    } else if (st === 'flash') {
+      s.push(`background:${base}`);
+    } else {
+      s.push(`background:${base}`);
+    }
+    let marker = false, markerStyle = '';
+    if (st === 'legal') {
+      marker = true;
+      markerStyle = `width:${(size * 0.2).toFixed(1)}px;height:${(size * 0.2).toFixed(1)}px;border-radius:50%;background:rgba(201,164,92,.75);box-shadow:0 0 0 ${Math.max(1, size * 0.028).toFixed(1)}px rgba(253,246,230,.35)`;
+    } else if (st === 'flash') {
+      marker = true;
+      markerStyle = `position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,rgba(255,250,235,.95) 0%,rgba(201,164,92,.7) 45%,rgba(201,164,92,0) 72%);animation:stFlash .55s ease-in-out infinite`;
+    } else if (st === 'from') {
+      marker = true;
+      markerStyle = `width:${(size * 0.14).toFixed(1)}px;height:${(size * 0.14).toFixed(1)}px;border-radius:50%;border:1.5px solid rgba(201,164,92,.8)`;
+    }
+    return {
+      id, style: s.join(';'), marker, markerStyle,
+      hasToken: !!p, army: p ? p[0] : 'red', rank: p ? p[1] : '7', mode: p ? p[2] : 'own',
+      sel: !!flags.sel, moved: !!flags.moved
+    };
+  }
+
+  board(size) {
+    const out = [];
+    for (let r = 10; r >= 1; r--) for (let c = 0; c < 10; c++) out.push(this.cell(COLS[c] + r, c, r, size));
+    return out;
+  }
+
+  legendCell(label, spec, opt) {
+    const o = opt || {};
+    const saved = { ...STATE };
+    const c = this.cell('LG', 0, 0, 58);
+    Object.assign(STATE, saved);
+    return { label, spec, ...c, ...o };
+  }
+
+  renderVals() {
+    const felt = this.props.feltColor ?? FELT_A;
+    const mk = (id, col, row, size) => this.cell(id, col, row, size);
+
+    const legendDefs = [
+      ['A7', 'empty felt', 'Empty', 'background #6d7d5a / #66765a alternating · inset 0 0 0 1px rgba(28,35,51,.10)'],
+      ['C5', 'lake', 'Lake (never enterable)', 'linear-gradient(165deg,#4b82a1,#3f7391 55%,#2e5a74) + 1px/6px horizontal ripple · inset 0 2px 8px rgba(0,0,0,.38)'],
+      ['SETUP', 'setup', 'Home rows, setup phase', 'overlay rgba(201,164,92,.08) · inset 0 0 0 1.5px rgba(201,164,92,.45) — rows 1–4 / 7–10'],
+      ['E5', 'selected', 'Selected', 'inset 0 0 0 3px #c9a45c + inset 0 0 23px rgba(201,164,92,.35); token lifts 7% of S'],
+      ['E4', 'legal', 'Legal target (empty)', 'centre dot 20% of cell, rgba(201,164,92,.75), 1.6px parchment halo'],
+      ['E6', 'capture', 'Capture target (enemy)', 'inset 0 0 0 3px #d1504f + inset 0 0 20px rgba(209,80,79,.30)'],
+      ['H9', 'from', 'Last move — from', 'overlay rgba(201,164,92,.10) + 8px hollow gold ring'],
+      ['H7B', 'to', 'Last move — to', 'overlay rgba(201,164,92,.18) · inset 0 0 0 1.5px rgba(201,164,92,.55)'],
+      ['B4', 'flash', 'Battle flash', 'radial gradient #fffaeb → rgba(201,164,92,.7) 45% → 0 at 72%, 550 ms alternate pulse ×3'],
+      ['TURN', 'empty', '“Your turn” frame glow', 'on frame: 0 0 0 3px rgba(201,164,92,.45–.9), 0 0 22–34px rgba(201,164,92,.28–.5), 2.6s ease-in-out']
+    ];
+    const legend = legendDefs.map(([id, st, label, spec]) => {
+      const key = 'LGD_' + id;
+      STATE[key] = st;
+      const overrides = {
+        E5: { hasToken: true, army: 'red', rank: '7', mode: 'own', sel: true },
+        E6: { hasToken: true, army: 'blue', rank: '2', mode: 'back' },
+        H7B: { hasToken: true, army: 'blue', rank: '9', mode: 'revealed' },
+        SETUP: { hasToken: true, army: 'red', rank: '6', mode: 'own' }
+      }[id] || {};
+      const c = this.cell(key, id === 'C5' ? 2 : 3, 5, 58);
+      delete STATE[key];
+      return { ...c, ...overrides, label, spec, style: c.style + ';width:58px;height:58px;flex:0 0 auto;border-radius:3px' };
+    });
+
+    return {
+      colLabels: COLS,
+      rowLabels: [10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
+      cells: this.board(58),
+      cellsM: this.board(33),
+      legend,
+      pieces: PIECES.map(p => ({ rank: p[0], name: p[1], meta: `RANK ${p[0]} · ×${p[2]} · ${p[5]}` })),
+      insignia: PIECES.map(p => ({ rank: p[0], name: p[1], note: p[5] + ' — ' + p[3], d: INSIGNIA[p[0]], fr: p[0] === 'S' ? 'evenodd' : 'nonzero' })),
+      cards: PIECES.filter(p => ['10', '3', '2', 'S', 'B', 'F'].includes(p[0])).map(p => ({ rank: p[0], name: p[1], count: p[2], tag: p[0] === 'B' || p[0] === 'F' ? p[3] : 'Rank ' + p[0], desc: p[4] })),
+      emblems: [
+        { name: 'Red army — lozenge', d: EMBLEM.red, chip: 'display:flex;align-items:center;justify-content:center;width:54px;height:54px;flex:0 0 auto;background:linear-gradient(158deg,#b13a41,#6f1b22);border:1.5px solid #4b1015;clip-path:polygon(22% 0,78% 0,100% 22%,100% 78%,78% 100%,22% 100%,0 78%,0 22%)' },
+        { name: 'Blue army — roundel', d: EMBLEM.blue, chip: 'display:flex;align-items:center;justify-content:center;width:54px;height:54px;flex:0 0 auto;background:linear-gradient(158deg,#3a5a8f,#1b2c50);border:1.5px solid #101d38;border-radius:10px' }
+      ],
+      states: [
+        { label: 'Own piece', cls: '.token', rank: '7', mode: 'own', sel: false, moved: false, spec: 'Rank + mirrored insignia. Default resting shadow.' },
+        { label: 'Enemy hidden (back)', cls: '.token.is-back', rank: '7', mode: 'back', sel: false, moved: false, spec: 'Army emblem replaces the numeral; pattern at full opacity.' },
+        { label: 'Enemy revealed', cls: '.token.is-known', rank: '9', mode: 'revealed', sel: false, moved: false, spec: 'Rank returns + inset gold hairline ring (4.5% of S) as the “known” mark.' },
+        { label: 'Has moved', cls: '.token.has-moved', rank: '6', mode: 'own', sel: false, moved: true, spec: 'Two gold edge ticks at mid-height, left and right — 180°-symmetric so it reads from both seats.' },
+        { label: 'Selected', cls: '.token.is-selected', rank: '7', mode: 'own', sel: true, moved: false, spec: 'Lift −7% of S, gold ring 5% of S at 85%, outer glow 50% of S.' },
+        { label: 'Lost', cls: '.token.is-lost', rank: '5', mode: 'own', sel: false, moved: false, spec: 'grayscale(1) + opacity .45. Used in battle report and losses list.' }
+      ],
+      palette: [
+        ['--parchment', '#f4efe4', 'Page + card ground'],
+        ['--parchment-deep', '#ece5d3', 'Inset panels, table stripes'],
+        ['--parchment-edge', '#d6cdb6', 'Card borders, 1px rules'],
+        ['--ink', '#1c2333', 'Primary text, tags'],
+        ['--ink-soft', '#4a5266', 'Secondary text (7.1:1 on parchment)'],
+        ['--gold', '#c9a45c', 'Selection, last move, turn glow'],
+        ['--gold-deep', '#9c7735', 'Gold text on parchment (4.6:1)'],
+        ['--red-1', '#b13a41', 'Red token gradient start'],
+        ['--red-2', '#6f1b22', 'Red token gradient end'],
+        ['--red-edge', '#4b1015', 'Red token border'],
+        ['--blue-1', '#3a5a8f', 'Blue token gradient start'],
+        ['--blue-2', '#1b2c50', 'Blue token gradient end'],
+        ['--blue-edge', '#101d38', 'Blue token border'],
+        ['--token-ink', '#fdf6e6', 'Numeral + insignia'],
+        ['--felt', felt, 'Cell A'],
+        ['--felt-alt', '#66765a', 'Cell B (alternating)'],
+        ['--lake', '#3f7391', 'Lake mid'],
+        ['--lake-deep', '#2e5a74', 'Lake shade'],
+        ['--lake-light', '#4b82a1', 'Lake highlight'],
+        ['--walnut', '#3d2b1f', 'Frame mid'],
+        ['--walnut-light', '#55402f', 'Frame highlight'],
+        ['--walnut-deep', '#2c1e15', 'Frame shade + board border'],
+        ['--alert', '#d1504f', 'Capture target ring'],
+        ['--win', '#2f6a3f', 'Battle report “wins” tag']
+      ].map(p => ({ name: p[0], hex: p[1], note: p[2], swatch: `height:46px;border-radius:5px;background:${p[1]};box-shadow:inset 0 0 0 1px rgba(28,35,51,.14)` })),
+      cssVars: [
+        ':root {',
+        '  --parchment:#f4efe4; --parchment-deep:#ece5d3; --parchment-edge:#d6cdb6;',
+        '  --ink:#1c2333; --ink-soft:#4a5266;',
+        '  --gold:#c9a45c; --gold-deep:#9c7735;',
+        '  --red-1:#b13a41; --red-2:#6f1b22; --red-edge:#4b1015;',
+        '  --blue-1:#3a5a8f; --blue-2:#1b2c50; --blue-edge:#101d38;',
+        '  --token-ink:#fdf6e6;',
+        '  --felt:#6d7d5a; --felt-alt:#66765a;',
+        '  --lake:#3f7391; --lake-deep:#2e5a74; --lake-light:#4b82a1;',
+        '  --walnut:#3d2b1f; --walnut-light:#55402f; --walnut-deep:#2c1e15;',
+        '  --alert:#d1504f; --win:#2f6a3f;',
+        '  --font-display:"Cinzel",Georgia,serif;',
+        '  --font-rank:"Oswald","Arial Narrow",sans-serif;',
+        '  --font-body:"Source Sans 3",system-ui,sans-serif;',
+        '}'
+      ].join('\n'),
+      contrast: [
+        { k: 'Numeral on red', v: '#fdf6e6 / #b13a41 → 5.4:1' },
+        { k: 'Numeral on blue', v: '#fdf6e6 / #3a5a8f → 6.4:1' },
+        { k: 'Body on parchment', v: '#4a5266 / #f4efe4 → 7.1:1' },
+        { k: 'Gold text', v: '#9c7735 / #f4efe4 → 4.6:1' }
+      ],
+      tokenSpec: [
+        { k: 'Silhouette · red', v: 'radius 7% of S + octagon chamfer at 22% of S (clip-path)' },
+        { k: 'Silhouette · blue', v: 'radius 18% of S, no chamfer' },
+        { k: 'Border', v: '2.8% of S solid var(--red-edge) / var(--blue-edge)' },
+        { k: 'Face gradient', v: 'linear-gradient(158deg, c1 0%, c2 100%)' },
+        { k: 'Sheen overlay', v: 'linear-gradient(180deg,rgba(253,246,230,.16) 0,rgba(253,246,230,0) 42%,rgba(28,35,51,.14) 100%)' },
+        { k: 'Pattern · red', v: 'repeating-linear-gradient(90deg,rgba(253,246,230,.10) 0 1.5px,transparent 1.5px 7px) @ .55 (1.0 on back)' },
+        { k: 'Pattern · blue', v: 'repeating-linear-gradient(45deg,rgba(253,246,230,.10) 0 1.5px,transparent 1.5px 7px) @ .55 (1.0 on back)' },
+        { k: 'Numeral', v: 'Oswald 600, 54% of S (44% for “10”), tabular-nums, text-shadow 0 1px 1px rgba(28,35,51,.45)' },
+        { k: 'Insignia', v: '26% of S, inset 5.5% of S, opacity .80; second copy rotate(180deg) at opposite corner' },
+        { k: 'Insignia cut-off', v: 'S < 40px → insignia hidden, numeral only' },
+        { k: 'Shadow · rest', v: '0 4% 9% rgba(28,35,51,.35), inset 0 2.8% 0 rgba(253,246,230,.18)' },
+        { k: 'Shadow · selected', v: '0 14% 22% rgba(28,35,51,.38), 0 0 0 5% #c9a45c(.85), 0 0 50% rgba(201,164,92,.55)' },
+        { k: 'Transition', v: 'transform .14s ease (lift only — never animate the face gradient)' }
+      ],
+      boardSpec: [
+        { k: 'Outer width', v: '650px · frame padding 22px · board border 2px #2c1e15, radius 4px' },
+        { k: 'Frame', v: 'linear-gradient(150deg,#55402f,#3d2b1f 62%,#2c1e15), radius 14px' },
+        { k: 'Cell', v: '58px (grid-template-columns:repeat(10,58px)); range 28–65px supported' },
+        { k: 'Token in cell', v: '79% of cell (46px at 58px) — keeps a 6px felt gutter on all sides' },
+        { k: 'Coordinates', v: 'Oswald 500, 12px, #d8c39a; 18px left gutter, 6px bottom gutter' },
+        { k: 'Lake squares', v: 'C5 C6 D5 D6 · G5 G6 H5 H6 — pointer-events:none' },
+        { k: 'Grid lines', v: 'inset 0 0 0 1px rgba(28,35,51,.10) per cell (no outer gaps)' },
+        { k: 'Blue seat', v: 'rotate(180deg) on the grid only; coordinate gutters re-render upright' }
+      ],
+      mobileSpec: [
+        { k: 'Outer width', v: '375px, frame padding 10px, radius 10px' },
+        { k: 'Cell', v: '33px · token 28px (85% of cell — tighter gutter to protect the numeral)' },
+        { k: 'Numeral', v: '15px at 28px token; never below 24% larger than the 12px floor' },
+        { k: 'Coordinates', v: '9px Oswald, 12px left gutter, 3px bottom gutter' },
+        { k: 'Insignia', v: 'hidden below 40px — rank only' },
+        { k: 'Ring weights', v: 'selection / capture inset ring clamps to 2px min (5.2% of cell)' },
+        { k: 'Legal dot', v: '20% of cell = 6.6px, halo drops to 1px' },
+        { k: 'Touch target', v: 'cell hit area padded to 44px via ::after overflow — visual cell stays 33px' }
+      ],
+      cardSpec: [
+        { k: 'Card', v: '420px wide, radius 12px, #f4efe4, border 1px #d6cdb6, shadow 0 8px 28px rgba(28,35,51,.14)' },
+        { k: 'Header', v: '#1c2333 bar, 14px/22px padding, Cinzel 600 16px, move counter Oswald 11px #c9a45c' },
+        { k: 'Tokens', v: '74px, 16px gap to label stack; loser uses .is-lost (grayscale + .45)' },
+        { k: 'Divider', v: '1px × 54px linear-gradient(#ddd4bd,#c9a45c,#ddd4bd)' },
+        { k: 'Result tags', v: 'radius 20px, 3px/9px, Oswald 11px/.1em — win #2f6a3f on #e4ddca, loss #8a3b3b' },
+        { k: 'Result sentence', v: 'Source Sans 3 15px/1.55 on #ece5d3, top border 1px #ddd4bd' },
+        { k: 'Losses strip', v: '30px tokens, 6px gap, rank-only rendering' },
+        { k: 'Reveal timing', v: 'battle flash 550ms ×3 on the board cell, then card fades in 180ms' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Oswald:wght@400;500;600&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f4efe4; }
+  a { color: #9c7735; } a:hover { color: #6f1b22; }
+  @keyframes stTurn { 0%,100% { box-shadow: inset 0 0 0 1px rgba(201,164,92,.35), 0 0 0 3px rgba(201,164,92,.45), 0 0 22px rgba(201,164,92,.28) } 50% { box-shadow: inset 0 0 0 1px rgba(201,164,92,.35), 0 0 0 3px rgba(201,164,92,.9), 0 0 34px rgba(201,164,92,.5) } }
+</style>
+</helmet>
+<section style="display:flex;flex-direction:column;gap:16px;padding:24px 24px 28px;width:520px;box-sizing:border-box;background:#f4efe4;font-family:'Source Sans 3',system-ui,sans-serif;color:#1c2333">
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <div style="font-family:Oswald,sans-serif;font-size:11px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:#9c7735">Board — phone · 375 px · blue seat</div>
+    <h1 style="margin:0;font-family:Cinzel,Georgia,serif;font-weight:700;font-size:24px;line-height:1.1">Same field, number only</h1>
+    <p style="margin:0;font-size:14px;line-height:1.55;color:#4a5266;text-wrap:pretty">33 px cells, 30 px tiles. Below 48 px the name comes off the label and the number grows to half the tile. Blue sees the board from its own side: the cells are rendered in reverse order, so every tile stays upright.</p>
+  </div>
+  <div style="width:375px;box-sizing:border-box;padding:10px 10px 4px;background:linear-gradient(150deg,#55402f 0%,#3d2b1f 62%,#2c1e15 100%);border-radius:10px;animation:stTurn 2.6s ease-in-out infinite">
+    <div style="display:flex;gap:4px">
+      <div style="display:flex;flex-direction:column;width:12px">
+        <sc-for list="{{ rowLabels }}" as="r" hint-placeholder-count="10">
+          <div style="height:33px;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-size:9px;color:#d8c39a">{{ r }}</div>
+        </sc-for>
+      </div>
+      <div style="{{ grid }}">
+        <sc-for list="{{ cells }}" as="c" hint-placeholder-count="100">
+          <div style="{{ c.style }}">
+            <sc-if value="{{ c.marker }}" hint-placeholder-val="{{ false }}"><div style="{{ c.markerStyle }}"></div></sc-if>
+            <sc-if value="{{ c.hasToken }}" hint-placeholder-val="{{ false }}">
+              <dc-import name="Token" rank="{{ c.rank }}" army="{{ c.army }}" mode="{{ c.mode }}" size="{{ 30 }}" selected="{{ c.sel }}" moved="{{ c.moved }}" hint-size="23px,30px"></dc-import>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <div style="display:flex;gap:4px;margin-top:3px">
+      <div style="width:12px"></div>
+      <div style="display:grid;grid-template-columns:repeat(10,33px)">
+        <sc-for list="{{ colLabels }}" as="c" hint-placeholder-count="10">
+          <div style="text-align:center;font-family:Oswald,sans-serif;font-size:9px;color:#d8c39a;letter-spacing:.06em">{{ c }}</div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;padding:14px;background:#ece5d3;border-radius:8px">
+    <dc-import name="Token" rank="10" army="blue" mode="own" size="{{ 30 }}" hint-size="23px,30px"></dc-import>
+    <dc-import name="Token" rank="2" army="red" mode="back" size="{{ 30 }}" hint-size="23px,30px"></dc-import>
+    <dc-import name="Token" rank="9" army="red" mode="revealed" size="{{ 30 }}" hint-size="23px,30px"></dc-import>
+    <span style="font-size:12.5px;line-height:1.45;color:#4a5266">Own · enemy back · enemy revealed at 30 px. The cream label alone separates “mine” from “theirs” at a glance.</span>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const COLS = 'JIHGFEDCBA'.split('');
+const LAKES = new Set(['C5', 'C6', 'D5', 'D6', 'G5', 'G6', 'H5', 'H6']);
+const GOLD = '#c9a45c', ALERT = '#d1504f';
+const CONTOUR = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='174' height='174' viewBox='0 0 174 174'%3E%3Cg fill='none' stroke='%23fdf6e6' stroke-opacity='.11' stroke-width='1.1'%3E%3Cpath d='M-10 44c30-30 62-22 86-2s44 40 66 8 30-12 42-22'/%3E%3Cpath d='M-10 104c34-22 54 6 84-2s54-34 84-12 26 4 26 4'/%3E%3Cellipse cx='60' cy='134' rx='38' ry='15'/%3E%3Cellipse cx='60' cy='134' rx='22' ry='7'/%3E%3Cellipse cx='132' cy='40' rx='20' ry='9'/%3E%3Cpath d='M100 160c20-10 40-6 60 4'/%3E%3C/g%3E%3C/svg%3E\")";
+// Blue's seat: blue at the bottom (rows 10 → 1 read from the far side), red face-down at the top.
+const PLACE = {
+  B10: ['blue', '6', 'own'], D10: ['blue', 'B', 'own'], G10: ['blue', 'F', 'own'], H10: ['blue', 'B', 'own'], I10: ['blue', 'B', 'own'], A10: ['blue', '3', 'own'],
+  A9: ['blue', 'B', 'own'], E9: ['blue', '7', 'own'], F9: ['blue', '4', 'own'], I9: ['blue', '2', 'own'], C9: ['blue', '10', 'own'],
+  B8: ['blue', '3', 'own'], C8: ['blue', '8', 'own'], F8: ['blue', '4', 'own', { moved: 1 }], J8: ['blue', '5', 'own'],
+  A7: ['blue', '5', 'own'], D7: ['blue', '6', 'own'], H7: ['blue', '9', 'own', { moved: 1, sel: 1 }],
+  E6: ['blue', '2', 'own'],
+  E5: ['red', '7', 'back'], D4: ['red', '3', 'back', { moved: 1 }], F4: ['red', '6', 'back'], J4: ['red', '7', 'back'], I3: ['red', '2', 'revealed', { moved: 1 }],
+  A3: ['red', '5', 'back'], D3: ['red', '9', 'back'], G3: ['red', '4', 'back'],
+  B2: ['red', '3', 'back'], E2: ['red', '10', 'back'], F2: ['red', '8', 'back'], H2: ['red', 'S', 'back'], J2: ['red', '6', 'back'],
+  A1: ['red', 'B', 'back'], B1: ['red', 'F', 'back'], C1: ['red', 'B', 'back'], E1: ['red', '3', 'back'], I1: ['red', '4', 'back']
+};
+const STATE = { H7: 'selected', H6: 'legal', G7: 'legal', I7: 'legal', H8: 'legal', H9: 'from' };
+class Component extends DCLogic {
+  cell(id, size) {
+    const lake = LAKES.has(id);
+    const st = STATE[id] || (lake ? 'lake' : 'empty');
+    const p = PLACE[id];
+    const flags = (p && p[3]) || {};
+    const s = ['position:relative;display:flex;align-items:center;justify-content:center;background:transparent', 'box-shadow:inset 0 0 0 1px rgba(28,35,51,.12)'];
+    if (lake) {
+      s.push('background:repeating-radial-gradient(circle at 50% 50%,rgba(253,246,230,.13) 0 1px,transparent 1px 6px),linear-gradient(165deg,#4b82a1 0%,#3f7391 55%,#2e5a74 100%)');
+      s.push('box-shadow:inset 0 1px 6px rgba(0,0,0,.38),inset 0 0 0 1px rgba(28,35,51,.25)');
+    } else if (st === 'selected') {
+      s.push(`box-shadow:inset 0 0 0 2px ${GOLD},inset 0 0 ${size * 0.4}px rgba(201,164,92,.35)`);
+    } else if (st === 'capture') {
+      s.push(`box-shadow:inset 0 0 0 2px ${ALERT},inset 0 0 ${size * 0.34}px rgba(209,80,79,.3)`);
+    } else if (st === 'from') {
+      s.push('background:rgba(201,164,92,.10)');
+    }
+    let marker = false, markerStyle = '';
+    if (st === 'legal') { marker = true; markerStyle = `width:${(size * 0.2).toFixed(1)}px;height:${(size * 0.2).toFixed(1)}px;border-radius:50%;background:rgba(201,164,92,.75);box-shadow:0 0 0 1px rgba(253,246,230,.35)`; }
+    else if (st === 'from') { marker = true; markerStyle = `width:${(size * 0.14).toFixed(1)}px;height:${(size * 0.14).toFixed(1)}px;border-radius:50%;border:1.5px solid rgba(201,164,92,.8)`; }
+    return { id, style: s.join(';'), marker, markerStyle, hasToken: !!p, army: p ? p[0] : 'red', rank: p ? p[1] : '7', mode: p ? p[2] : 'own', sel: !!flags.sel, moved: !!flags.moved };
+  }
+  renderVals() {
+    const cells = [];
+    // Blue's seat: row 1 at the top, row 10 at the bottom, files J → A.
+    for (let r = 1; r <= 10; r++) for (const col of COLS) cells.push(this.cell(col + r, 33));
+    return {
+      colLabels: COLS,
+      rowLabels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      cells,
+      grid: `display:grid;grid-template-columns:repeat(10,33px);grid-auto-rows:33px;border:1.5px solid #2c1e15;border-radius:3px;overflow:hidden;box-shadow:inset 0 1px 6px rgba(0,0,0,.35);background-image:${CONTOUR},repeating-conic-gradient(#6d7d5a 0 25%,#66765a 0 50%);background-size:132px 132px,66px 66px`
+    };
+  }
+}
+</script>
+</body>
+</html>

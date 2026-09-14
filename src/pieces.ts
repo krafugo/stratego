@@ -53,7 +53,7 @@ export const PIECES: readonly PieceInfo[] = [
   { rank: '2', name: 'Scout', value: 2, count: 8, movable: true,
     glyph: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2"/></svg>`,
     summary: 'Moves any distance in a straight line.',
-    detail: 'The only piece that can travel several squares per turn, like a rook, and it may attack at the end of that run. Moving more than one square reveals it as a Scout.' },
+    detail: 'The only piece that can travel several squares per turn: any number of empty squares in a straight line, like a rook, never over a piece or a lake, and it may attack at the end of that run. Moving more than one square reveals it as a Scout.' },
   { rank: 'S', name: 'Spy', value: 1, count: 1, movable: true,
     glyph: path('M12 2.5c-4.4 0-7.5 4-7.5 9.5v9.5h15V12c0-5.5-3.1-9.5-7.5-9.5zm0 5.5c1.9 0 3.3 1.9 3.3 4.4S13.9 16.8 12 16.8s-3.3-1.9-3.3-4.4S10.1 8 12 8z'),
     summary: 'Weakest piece, unless it attacks the Marshal.',
