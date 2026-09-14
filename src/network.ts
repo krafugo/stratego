@@ -2,7 +2,7 @@
 // message travels over a reliable, encrypted WebRTC data channel between the
 // two browsers. GitHub Pages only serves the static site.
 import { Peer, type DataConnection, type PeerOptions } from 'peerjs';
-import type { Round } from './game.ts';
+import type { Round, Saved } from './game.ts';
 import { randomHex } from './crypto.ts';
 
 export type Role = 'host' | 'guest';
@@ -10,7 +10,7 @@ export type StatusKind = 'connecting' | 'waiting' | 'connected' | 'offline' | 'r
 export interface Session {
   version: 1; role: Role; name: string; code: string; token: string;
   remoteToken: string | null; remoteName: string | null;
-  game?: import('./game.ts').Saved;
+  game?: Saved;
 }
 export interface Callbacks {
   status(kind: StatusKind, text: string): void;
@@ -55,7 +55,7 @@ export class RoomConnection {
   private connected = false;
   private lastSeen = 0;
   private interval: ReturnType<typeof setInterval>;
-  private wake = () => this.tick();
+  private wake = () => { if (document.visibilityState !== 'hidden') this.probe(); };
   private session: Session;
   private callbacks: Callbacks;
   private options: PeerOptions;
@@ -105,12 +105,13 @@ export class RoomConnection {
       if (this.conn === conn) this.conn = null;
       if (!this.connected) this.status('offline', 'Your opponent hasn’t connected yet. Keep both screens open, check the code, or try another network.');
     }, 20000);
+    const reserved = 'This seat belongs to the player who joined first. To rejoin a game, open the room link on the device and browser you played from.';
     const reject = (reason: string) => { try { conn.send({ type: 'reject', reason } satisfies Message); } catch {} setTimeout(() => conn.close(), 150); };
     conn.on('open', () => {
       if (this.closed) { conn.close(); return; }
       if (this.connected && this.conn !== conn && meta.token !== this.session.remoteToken) { reject('This room already has two players.'); return; }
       if (this.session.role === 'host' && (meta.code !== this.session.code || meta.version !== 1 || (this.session.remoteToken && meta.token !== this.session.remoteToken))) {
-        reject('This room is reserved for the original two players.'); return;
+        reject(reserved); return;
       }
       conn.send({ type: 'hello', version: 1, code: this.session.code, role: this.session.role, token: this.session.token, name: this.session.name } satisfies Message);
     });
@@ -125,7 +126,7 @@ export class RoomConnection {
         const expectedRole = this.session.role === 'host' ? 'guest' : 'host';
         const valid = message.version === 1 && message.code === this.session.code && message.role === expectedRole && /^[a-f0-9]{32}$/.test(message.token) && typeof message.name === 'string'
           && !(this.session.role === 'host' && message.token !== meta.token) && !(this.session.remoteToken && this.session.remoteToken !== message.token) && !(this.connected && this.conn !== conn && message.token !== this.session.remoteToken);
-        if (!valid) { reject('This room is reserved for the original two players.'); return; }
+        if (!valid) { reject(reserved); return; }
         accepted = true; clearTimeout(timeout);
         const old = this.conn;
         this.conn = conn; this.connected = true; this.lastSeen = Date.now();
@@ -148,7 +149,7 @@ export class RoomConnection {
       clearTimeout(timeout);
       if (this.conn !== conn || this.closed) return;
       this.conn = null; this.connected = false;
-      if (!this.rejected) this.status('offline', 'Your opponent is reconnecting. The board is saved. Keep this tab open.');
+      if (!this.rejected) this.status('offline', 'Connection lost. The board is saved on both sides; it resumes as soon as your opponent is back.');
     });
     conn.on('error', () => { clearTimeout(timeout); conn.close(); });
     // Reserve the outbound attempt so repeated timer ticks cannot race it.
@@ -162,6 +163,14 @@ export class RoomConnection {
       this.conn?.send({ type: 'ping' } satisfies Message); return;
     }
     this.retry();
+  }
+  /** Coming back online or to the foreground: a channel that died while the tab slept gets 4 s to answer a ping, then we reconnect. */
+  private probe() {
+    if (this.closed || this.rejected) return;
+    if (!this.connected) { this.retry(); return; }
+    const seen = this.lastSeen;
+    try { this.conn?.send({ type: 'ping' } satisfies Message); } catch { this.conn?.close(); return; }
+    setTimeout(() => { if (!this.closed && this.connected && this.lastSeen === seen) this.conn?.close(); }, 4000);
   }
   private retry() {
     if (this.closed || this.rejected || this.connected) return;

@@ -1,6 +1,6 @@
 import './style.css';
 import { registerSW } from 'virtual:pwa-register';
-import { Game, GameError, LAKES, colOf, other, randomSetup, rowOf, type Color, type Combat, type View } from './game.ts';
+import { Game, GameError, LAKES, colOf, other, randomSetup, rowOf, type Color, type Combat, type Round, type View } from './game.ts';
 import { PIECES, PIECE_BY_RANK, type Rank } from './pieces.ts';
 import { arrow, crest, e, ordinal, token } from './tokens.ts';
 import { guide } from './guide.ts';
@@ -10,11 +10,23 @@ import { LocalConnection } from './local.ts';
 registerSW({ immediate: true });
 
 type Draft = { round: number; color: Color; placement: Record<number, Rank> };
-type StoredSession = Session & { draft?: Draft; transport?: 'local' };
+type StoredSession = Session & { draft?: Draft; transport?: 'local'; savedAt?: number };
+const SEAT_TTL = 7 * 24 * 60 * 60 * 1000;
 
 const root = document.querySelector<HTMLElement>('#app')!;
-const storageKey = 'stratego-session-v1';
 const linkParams = new URLSearchParams(location.hash.slice(1));
+// Dev only: `#seat=<name>` keeps two seats of the same browser apart while testing with the local transport.
+const storageKey = 'stratego-session-v1' + (import.meta.env.DEV && linkParams.get('seat') ? ':' + linkParams.get('seat') : '');
+// The seat (token, army ranks and salts) lives in localStorage so a killed tab,
+// a backgrounded phone browser or a fresh open of the room link rejoins the
+// same game. sessionStorage is the fallback when localStorage is blocked.
+const storage: Storage | null = (() => {
+  for (const candidate of [() => localStorage, () => sessionStorage]) {
+    try { const store = candidate(); store.setItem('stratego-probe', '1'); store.removeItem('stratego-probe'); return store; } catch {}
+  }
+  return null;
+})();
+const linkRoom = normalizeCode(linkParams.get('room') ?? '');
 let session: StoredSession | null = null, game: Game | null = null, network: RoomConnection | LocalConnection | null = null;
 const localTransport = import.meta.env.DEV && linkParams.get('transport') === 'local';
 let state: StatusKind | 'home' = 'home', status = '', message = '', fatal = '', busy = false;
@@ -23,8 +35,9 @@ let draftName = '', draftCode = linkParams.get('room') ?? '';
 let selected: number | null = null, rulesOpen = false, leaveOpen = false, lastSent = '', storageWarning = '';
 let resume: StoredSession | null = null;
 try {
-  const raw = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null');
-  if (raw?.version === 1 && validCode(raw.code) && ['host', 'guest'].includes(raw.role) && raw.token) resume = raw;
+  const raw = JSON.parse(storage?.getItem(storageKey) ?? 'null');
+  if (raw?.version === 1 && validCode(raw.code) && ['host', 'guest'].includes(raw.role) && raw.token && Date.now() - (raw.savedAt ?? Date.now()) < SEAT_TTL) resume = raw;
+  else if (raw) storage?.removeItem(storageKey);
 } catch {}
 
 const FILES = 'ABCDEFGHIJ';
@@ -33,13 +46,24 @@ const squareName = (sq: number) => `${FILES[colOf(sq)]}${10 - rowOf(sq)}`;
 function persist() {
   if (!session) return;
   if (game) session.game = game.saved();
-  try { sessionStorage.setItem(storageKey, JSON.stringify(session)); }
-  catch { storageWarning = 'This browser can’t save your game. Keep this tab open; refreshing will lose your place.'; }
+  session.savedAt = Date.now();
+  try { storage?.setItem(storageKey, JSON.stringify(session)); if (!storage) throw new Error('no storage'); }
+  catch { storageWarning = 'This browser can’t save your game. Keep this tab open; refreshing or closing it will lose your place.'; }
 }
 function sync(force = false) {
   if (!game) return;
   const rounds = game.snapshot().rounds, text = JSON.stringify(rounds);
   if (force || text !== lastSent) { network?.send(rounds); lastSent = text; }
+}
+/** A peer that reconnects with an older transcript needs ours: true when theirs lacks something we hold. */
+function peerIsBehind(theirs: unknown, ours: Round[]) {
+  if (!Array.isArray(theirs) || theirs.length < ours.length) return true;
+  return ours.some((round, i) => {
+    const remote = theirs[i] as Partial<Round> | undefined;
+    if (!remote) return true;
+    return (remote.log?.length ?? 0) < round.log.length
+      || (['red', 'blue'] as const).some(color => (round.setups[color] && !remote.setups?.[color]) || (round.resigned[color] && !remote.resigned?.[color]) || (round.again[color] && !remote.again?.[color]));
+  });
 }
 function onGameChange() { persist(); sync(); render(); }
 
@@ -65,19 +89,28 @@ async function start(role: 'host' | 'guest', existing: StoredSession | null = nu
     if (local) session.transport = 'local';
     state = 'connecting'; status = 'Opening a connection…'; selected = null; lastSent = '';
     game = new Game(session.code, session.game, onGameChange, session.role);
+    try { game.view(); } catch { // a saved game this version cannot read: start the room over rather than boot into an error
+      game = new Game(session.code, null, onGameChange, session.role); delete session.draft; message = 'The saved match could not be read, so this room starts a new round.';
+    }
     const callbacks: Callbacks = {
       status(kind, text) { state = kind; status = text; render(); },
       ready(remote) { Object.assign(session!, { remoteName: remote.name, remoteToken: remote.token }); state = 'connected'; persist(); sync(true); game?.respond(); render(); },
-      data(rounds) { game?.receive(rounds).catch((err: unknown) => { fatal = err instanceof Error ? err.message : 'Sync failed.'; render(); }); },
+      data(rounds) {
+        game?.receive(rounds)
+          .then(() => { if (game && peerIsBehind(rounds, game.snapshot().rounds)) sync(true); })
+          .catch((err: unknown) => { fatal = err instanceof Error ? err.message : 'Sync failed.'; render(); });
+      },
       error(text) { fatal = text; render(); },
     };
     network = local ? new LocalConnection(session, callbacks) : new RoomConnection(session, callbacks, options!);
     persist();
+    window.history.replaceState(null, '', roomHash(session));
   } catch (err) { message = err instanceof Error ? err.message : 'Couldn’t open the room. Please try again.'; if (!network) { session = null; game = null; state = 'home'; } }
   busy = false; render();
 }
 
-function inviteURL() { const url = new URL(location.href); url.hash = new URLSearchParams({ room: session!.code, ...(localTransport ? { transport: 'local' } : {}) }).toString(); return url.href; }
+const roomHash = (s: StoredSession) => '#' + new URLSearchParams({ room: s.code, ...(s.transport === 'local' ? { transport: 'local' } : {}), ...(import.meta.env.DEV && linkParams.get('seat') ? { seat: linkParams.get('seat')! } : {}) }).toString();
+function inviteURL() { const url = new URL(location.href); url.hash = roomHash(session!); return url.href; }
 async function copyInvite(share: boolean) {
   try {
     if (share && navigator.share) await navigator.share({ title: 'Stratego', text: 'Your army awaits. Join my game of Stratego!', url: inviteURL() });
@@ -196,7 +229,7 @@ function leaveRoom() {
   network?.close();
   session = null; game = null; network = null; resume = null;
   state = 'home'; status = ''; message = ''; fatal = ''; leaveOpen = false; selected = null; lastSent = '';
-  try { sessionStorage.removeItem(storageKey); } catch {}
+  try { storage?.removeItem(storageKey); } catch {}
   window.history.replaceState(null, '', location.pathname + location.search); render();
 }
 function closeDialog(id: string) { document.querySelector<HTMLDialogElement>(id)?.close(); }
@@ -300,5 +333,9 @@ document.addEventListener('keydown', event => {
   if (selected !== null) { selected = null; render(); }
 });
 window.addEventListener('beforeunload', () => persist());
+window.addEventListener('pagehide', () => persist());
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persist(); });
 
 render();
+// Opening the room's own link (a reload, a killed tab, a phone coming back) rejoins the saved seat straight away.
+if (resume && linkRoom && linkRoom === resume.code) void start(resume.role, resume);
