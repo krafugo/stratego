@@ -182,6 +182,27 @@ test('commitments bind a piece id to its rank and salt', async () => {
   assert.notEqual(a, b); assert.equal(a.length, 64);
 });
 
+test('a phone that slept through an attack rejoins from its saved seat and catches up', async () => {
+  const { host, guest } = await table({ 60: '10', 61: '6' }, { 30: '2', 31: '4' });
+  host.move(60, 50); await sync(host, guest); guest.move(30, 40); await sync(host, guest);
+  host.move(61, 51); await sync(host, guest);
+  const asleep = JSON.parse(JSON.stringify(host.saved()));                            // the host's phone goes to sleep here
+  guest.move(40, 50);                                                                 // the blue scout strikes the marshal; no defender answers
+  assert.ok(guest.view().pending);
+  const phone = new Game('room', asleep, noop, 'host');                              // the phone reopens the room link with its saved seat
+  assert.equal(phone.view().moveCount, 3);
+  await phone.receive(guest.snapshot().rounds);                                       // the connected peer's snapshot arrives on reconnect
+  await sync(phone, guest);                                                           // the phone defended automatically and both agree
+  for (const g of [phone, guest]) {
+    assert.equal(g.view().pending, null);
+    assert.deepEqual(g.view().captured, { red: [], blue: ['2'] });
+    assert.equal(g.view().board[50]!.rank, '10');
+    assert.equal(g.view().turn, 'red');
+  }
+  phone.move(50, 40); await sync(phone, guest);                                       // and it keeps playing with its own army
+  assert.equal(guest.view().board[40]!.rank, '10');
+});
+
 test('saved state restores the same view, and resignation ends the round', async () => {
   const { host, guest } = await table({ 60: '10' }, { 30: '2' });
   host.move(60, 50); await sync(host, guest);

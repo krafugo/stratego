@@ -26,8 +26,8 @@ export class LocalConnection {
     if (message.type === 'hello') {
       if (message.role === this.session.role) return;
       if (!message.reply) this.hello(true);
-      if (this.connected) return;
-      this.connected = true;
+      if (this.connected && message.reply) return;   // an acknowledgement of our own hello
+      this.connected = true;                          // a fresh hello means the other tab reloaded: re-run the handshake so both resync
       this.session.remoteToken = message.token; this.session.remoteName = message.name;
       this.callbacks.status('connected', 'Both players connected (dev transport)');
       this.callbacks.ready({ name: message.name, token: message.token });

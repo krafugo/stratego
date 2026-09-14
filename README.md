@@ -67,7 +67,7 @@ Neither browser is trusted with the other's army:
 - At setup each player publishes only piece ids, positions and a **salted SHA-256 commitment** per piece. Ranks never cross the wire until they must be revealed.
 - Attacks, defences, scout runs and the no-moves declaration carry the piece's rank and salt; the opponent checks them against the commitment before accepting the move.
 - Both peers replay the same event log through the same deterministic engine. Any illegal move, impossible reveal, extra piece or rewritten history freezes the game with an explanation instead of counting.
-- Each browser keeps its own ranks and salts only in that tab's `sessionStorage`, so a refresh resumes the game and a closed tab forgets it.
+- Each browser keeps its own seat (token, ranks and salts) in `localStorage`, so a refresh, a killed tab or a phone coming back from the background rejoins the same game: open the room link again and the board, the last move and whose turn it is sync from the peer that stayed connected. Only **Leave room** forgets it. A seat cannot move to another device, because that device would not hold the army's salts.
 
 This is a friendly peer-to-peer game, not an anti-cheat service: it cannot stop a modified client from abandoning a lost position, and WebRTC reveals network addresses to the other peer.
 
