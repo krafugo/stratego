@@ -2,7 +2,7 @@
 // message travels over a reliable, encrypted WebRTC data channel between the
 // two browsers. GitHub Pages only serves the static site.
 import { Peer, type DataConnection, type PeerOptions } from 'peerjs';
-import type { Round } from './game.ts';
+import type { Round, Saved } from './game.ts';
 import { randomHex } from './crypto.ts';
 
 export type Role = 'host' | 'guest';
@@ -10,7 +10,7 @@ export type StatusKind = 'connecting' | 'waiting' | 'connected' | 'offline' | 'r
 export interface Session {
   version: 1; role: Role; name: string; code: string; token: string;
   remoteToken: string | null; remoteName: string | null;
-  game?: import('./game.ts').Saved;
+  game?: Saved;
 }
 export interface Callbacks {
   status(kind: StatusKind, text: string): void;

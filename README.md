@@ -27,6 +27,13 @@ The complete rules and a card for every piece are in the game itself: **How to p
 Use Node 22.18 or newer (the tests rely on built-in TypeScript type stripping):
 
 ```sh
+make start      # installs dependencies on first run, then serves http://127.0.0.1:5190
+make check      # everything CI runs: typecheck, lint, tests, build
+```
+
+`make help` lists the rest (`test`, `lint`, `typecheck`, `build`, `serve`, `clean`). The same tasks exist as npm scripts:
+
+```sh
 npm ci
 npm run dev
 ```
@@ -35,6 +42,7 @@ Open http://127.0.0.1:5190. Create a room, then join it from another browser or 
 
 ```sh
 npm test          # engine tests (node --test)
+npm run lint      # ESLint (typescript-eslint)
 npm run build     # type-check + production build into dist/
 npm run preview   # serve dist/ on http://127.0.0.1:5191
 ```
