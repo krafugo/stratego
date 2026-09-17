@@ -4,7 +4,8 @@ import { Game, GameError, LAKES, colOf, other, randomSetup, rowOf, type Color, t
 import { PIECES, PIECE_BY_RANK, type Rank } from './pieces.ts';
 import { arrow, crest, e, ordinal, token } from './tokens.ts';
 import { guide } from './guide.ts';
-import { RoomConnection, connectionOptions, createSession, normalizeCode, validCode, type Callbacks, type Session, type StatusKind } from './network.ts';
+import { Room, createSession, normalizeCode, validCode, type Callbacks, type Path, type Session, type StatusKind } from './network.ts';
+import { DEFAULT_BROKERS, planIce } from './ice.ts';
 import { LocalConnection } from './local.ts';
 
 registerSW({ immediate: true });
@@ -27,9 +28,9 @@ const storage: Storage | null = (() => {
   return null;
 })();
 const linkRoom = normalizeCode(linkParams.get('room') ?? '');
-let session: StoredSession | null = null, game: Game | null = null, network: RoomConnection | LocalConnection | null = null;
+let session: StoredSession | null = null, game: Game | null = null, network: Room | LocalConnection | null = null;
 const localTransport = import.meta.env.DEV && linkParams.get('transport') === 'local';
-let state: StatusKind | 'home' = 'home', status = '', message = '', fatal = '', busy = false;
+let state: StatusKind | 'home' = 'home', status = '', path: Path = 'none', message = '', fatal = '', busy = false;
 let joining = !!linkParams.get('room');
 let draftName = '', draftCode = linkParams.get('room') ?? '';
 let selected: number | null = null, rulesOpen = false, leaveOpen = false, lastSent = '', storageWarning = '';
@@ -84,7 +85,9 @@ async function start(role: 'host' | 'guest', existing: StoredSession | null = nu
   busy = true; message = ''; render();
   try {
     const local = import.meta.env.DEV && (localTransport || existing?.transport === 'local');
-    const options = local ? undefined : await connectionOptions();
+    const settings = window.STRATEGO_CONNECTION ?? {};
+    status = 'Checking connection routes…'; render();
+    const ice = local ? null : await planIce(settings);
     session = existing ?? createSession(role, draftName, role === 'guest' ? code : undefined);
     if (local) session.transport = 'local';
     state = 'connecting'; status = 'Opening a connection…'; selected = null; lastSent = '';
@@ -93,7 +96,7 @@ async function start(role: 'host' | 'guest', existing: StoredSession | null = nu
       game = new Game(session.code, null, onGameChange, session.role); delete session.draft; message = 'The saved match could not be read, so this room starts a new round.';
     }
     const callbacks: Callbacks = {
-      status(kind, text) { state = kind; status = text; render(); },
+      status(kind, text, via) { state = kind; status = text; path = via; render(); },
       ready(remote) { Object.assign(session!, { remoteName: remote.name, remoteToken: remote.token }); state = 'connected'; persist(); sync(true); game?.respond(); render(); },
       data(rounds) {
         game?.receive(rounds)
@@ -102,7 +105,10 @@ async function start(role: 'host' | 'guest', existing: StoredSession | null = nu
       },
       error(text) { fatal = text; render(); },
     };
-    network = local ? new LocalConnection(session, callbacks) : new RoomConnection(session, callbacks, options!);
+    network = local ? new LocalConnection(session, callbacks) : new Room(session, callbacks, {
+      peer: { ...settings.peerServer, debug: 0, config: { iceServers: ice!.servers, ...(settings.iceTransportPolicy ? { iceTransportPolicy: settings.iceTransportPolicy } : {}) } },
+      brokers: settings.brokers ?? DEFAULT_BROKERS,
+    });
     persist();
     window.history.replaceState(null, '', roomHash(session));
   } catch (err) { message = err instanceof Error ? err.message : 'Couldn’t open the room. Please try again.'; if (!network) { session = null; game = null; state = 'home'; } }
@@ -206,12 +212,12 @@ function aside(v: View) {
   }
   const title = v.outcome === 'win' ? 'Victory.' : v.outcome === 'loss' ? `${friend} wins.` : 'A draw.';
   const why = v.reason === 'flag' ? (v.outcome === 'win' ? 'You captured the enemy flag.' : 'Your flag was captured.') : v.reason === 'stuck' ? (v.outcome === 'win' ? `${friend} had no legal move left.` : 'You had no legal move left.') : v.reason === 'resigned' ? (v.outcome === 'win' ? `${friend} resigned.` : 'You resigned.') : 'Both players resigned.';
-  return `<section class="game-panel result ${v.outcome}"><div class="phase-label">${v.outcome === 'win' ? 'YOU WIN THIS ROUND' : v.outcome === 'loss' ? `${friend.toUpperCase()} WINS` : 'IT’S A DRAW'}</div><h1>${title}</h1><p>${why} ${v.moveCount} moves were played.</p>${battleCard(v)}<button class="button primary" data-action="again" ${v.myAgain || state !== 'connected' ? 'disabled' : ''}>${v.myAgain ? `Waiting for ${friend}…` : v.theirAgain ? `${friend} wants a rematch · Play again` : 'Play again · colours swap'} ${arrow}</button><div class="message ${message ? '' : 'empty'}" role="status">${e(message)}</div></section>${graveyard(v)}${seat}`;
+  return `<section class="game-panel result ${v.outcome}"><div class="phase-label">${v.outcome === 'win' ? 'YOU WIN THIS ROUND' : v.outcome === 'loss' ? `${friend.toUpperCase()} WINS` : 'IT’S A DRAW'}</div><h1>${title}</h1><p>${why} ${v.moveCount} moves were played.</p>${battleCard(v)}<button class="button primary" data-action="again" ${v.myAgain || !session!.remoteToken ? 'disabled' : ''}>${v.myAgain ? `Waiting for ${friend}…` : v.theirAgain ? `${friend} wants a rematch · Play again` : 'Play again · colours swap'} ${arrow}</button><div class="message ${message ? '' : 'empty'}" role="status">${e(message)}</div></section>${graveyard(v)}${seat}`;
 }
 
 function room() {
   const v = game!.view();
-  const top = `<div class="room-heading"><div><span class="eyebrow">ROOM</span><button class="room-pill" data-action="copy">${e(session!.code.slice(0, 4))} ${e(session!.code.slice(4))}<span>↗</span></button></div><button class="text-button muted" data-action="leave">Leave room</button></div><div class="connection-banner ${state === 'connected' ? 'connected' : ''}" role="status"><span class="connection-dot"></span><span>${e(status)}</span></div>${storageWarning ? `<div class="message">${e(storageWarning)}</div>` : ''}`;
+  const top = `<div class="room-heading"><div><span class="eyebrow">ROOM</span><button class="room-pill" data-action="copy">${e(session!.code.slice(0, 4))} ${e(session!.code.slice(4))}<span>↗</span></button></div><button class="text-button muted" data-action="leave">Leave room</button></div><div class="connection-banner ${state === 'connected' ? 'connected' : state === 'waiting' && path === 'relay' && session!.remoteToken ? 'stored' : ''}" role="status"><span class="connection-dot"></span><span>${e(status)}</span>${path !== 'none' ? `<span class="path-badge">${path === 'direct' ? 'P2P' : 'Relay'}</span>` : ''}</div>${storageWarning ? `<div class="message">${e(storageWarning)}</div>` : ''}`;
   return `${top}<div class="game-grid">${boardHTML(v)}<aside class="game-aside">${aside(v)}</aside>${v.phase !== 'setup' ? tracker(v) : ''}</div>`;
 }
 
@@ -228,7 +234,7 @@ function render() {
 function leaveRoom() {
   network?.close();
   session = null; game = null; network = null; resume = null;
-  state = 'home'; status = ''; message = ''; fatal = ''; leaveOpen = false; selected = null; lastSent = '';
+  state = 'home'; status = ''; path = 'none'; message = ''; fatal = ''; leaveOpen = false; selected = null; lastSent = '';
   try { storage?.removeItem(storageKey); } catch {}
   window.history.replaceState(null, '', location.pathname + location.search); render();
 }
