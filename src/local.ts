@@ -16,7 +16,7 @@ export class LocalConnection {
     this.session = session; this.callbacks = callbacks;
     this.channel = new BroadcastChannel(`stratego-local-${session.code}`);
     this.channel.onmessage = event => this.receive(event.data as Message);
-    callbacks.status('waiting', 'Local room open (dev transport)');
+    callbacks.status('waiting', 'Local room open (dev transport)', 'none');
     this.hello(false);
     this.timer = setInterval(() => { if (!this.connected) this.hello(false); }, 1000);
   }
@@ -29,10 +29,10 @@ export class LocalConnection {
       if (this.connected && message.reply) return;   // an acknowledgement of our own hello
       this.connected = true;                          // a fresh hello means the other tab reloaded: re-run the handshake so both resync
       this.session.remoteToken = message.token; this.session.remoteName = message.name;
-      this.callbacks.status('connected', 'Both players connected (dev transport)');
+      this.callbacks.status('connected', 'Both players connected (dev transport)', 'direct');
       this.callbacks.ready({ name: message.name, token: message.token });
     } else if (message.type === 'sync' && message.token === this.session.remoteToken) this.callbacks.data(message.rounds);
-    else if (message.type === 'leave') { this.connected = false; this.callbacks.status('left', 'Your opponent left the room.'); }
+    else if (message.type === 'leave') { this.connected = false; this.callbacks.status('left', 'Your opponent left the room.', 'none'); }
   }
   send(rounds: Round[]) { if (this.connected) this.channel.postMessage({ type: 'sync', token: this.session.token, rounds } satisfies Message); }
   close() { this.channel.postMessage({ type: 'leave', token: this.session.token } satisfies Message); clearInterval(this.timer); this.channel.close(); }

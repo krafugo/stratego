@@ -166,6 +166,9 @@ button.cell:focus-visible { outline-offset: -3px; z-index: 2; }
 .room-pill > span { color: var(--gold-2); }
 .connection-banner { background: #ece6d8; border: 1px solid var(--line); border-radius: 10px; display: flex; align-items: center; gap: 10px; padding: 12px 16px; font-size: .875rem; line-height: 1.5; margin-bottom: 24px; }
 .connection-banner.connected { background: #e6efdc; border-color: #cbdcb4; }
+.connection-banner.stored { background: #eef0f6; border-color: #cfd6e6; }
+.stored .connection-dot { background: var(--blue); }
+.path-badge { margin-left: auto; font-family: var(--display); font-size: .68rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor; opacity: .75; white-space: nowrap; }
 .connection-dot { height: 8px; width: 8px; min-width: 8px; border-radius: 50%; background: #b08a3c; }
 .connected .connection-dot { background: #5f8a3a; box-shadow: 0 0 0 3px #5f8a3a33; }
 .game-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); grid-template-rows: auto 1fr; gap: 32px; align-items: start; }
