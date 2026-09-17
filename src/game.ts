@@ -29,7 +29,9 @@ export interface SetupEntry { id: string; square: number; commitment: string }
 export type GameEvent =
   | { type: 'move'; by: Color; from: number; to: number; reveal?: Reveal }
   | { type: 'defend'; by: Color; reveal: Reveal }
-  | { type: 'stuck'; by: Color; reveals: Record<string, Reveal> };
+  | { type: 'stuck'; by: Color; reveals: Record<string, Reveal> }
+  /** "My flag can never be reached": reveals the flag and the bombs around it. Valid only when the opponent has lost all five Miners. */
+  | { type: 'dead'; by: Color; reveals: Record<string, Reveal> };
 export interface Round {
   setups: Partial<Record<Color, SetupEntry[]>>;
   log: GameEvent[];
@@ -53,6 +55,8 @@ export interface Sim {
   lastMove: { from: number; to: number; by: Color } | null;
   winner: Color | null;
   reason: string;
+  /** Colours whose flag is proven unreachable; both together end the round as a draw. */
+  dead: Partial<Record<Color, true>>;
   recent: Record<Color, Recent[]>;
   moveCount: number;
   reveals: PendingReveal[];
@@ -108,6 +112,15 @@ export function targets(board: readonly (Piece | null)[], from: number, recent: 
   return out.filter(to => !shuttleBlocked(recent, piece.id, from, to));
 }
 
+export const MINERS = PIECE_BY_RANK['3'].count;
+export const minersLeft = (sim: Sim, color: Color) => MINERS - sim.captured[color].filter(rank => rank === '3').length;
+export const neighbours = (square: number) => [square - SIZE, square + SIZE, square - 1, square + 1].filter(n => n >= 0 && n < 100 && Math.abs(colOf(n) - colOf(square)) <= 1);
+/** The flag of `color` (a square whose rank is known to be F) is sealed when every neighbour is a lake or one of its own bombs. */
+export function sealedFlag(board: readonly (Piece | null)[], color: Color): number | null {
+  const flag = board.findIndex(piece => piece?.owner === color && piece.rank === 'F');
+  if (flag < 0) return null;
+  return neighbours(flag).every(n => LAKES.has(n) || (board[n]?.owner === color && board[n]?.rank === 'B')) ? flag : null;
+}
 const hasAnyMove = (sim: Sim, color: Color) => sim.board.some((piece, sq) => piece?.owner === color && targets(sim.board, sq, sim.recent[color]).length > 0);
 
 function checkSetup(color: Color, setup: unknown): asserts setup is SetupEntry[] {
@@ -131,7 +144,7 @@ function checkEvent(event: unknown): asserts event is GameEvent {
   assert(e.by === 'red' || e.by === 'blue', 'Malformed event.');
   if (e.type === 'move') { assert(isSquare(e.from) && isSquare(e.to), 'Malformed move.'); if (e.reveal !== undefined) checkReveal(e.reveal); }
   else if (e.type === 'defend') checkReveal(e.reveal);
-  else if (e.type === 'stuck') { assert(e.reveals && typeof e.reveals === 'object', 'Malformed reveal.'); for (const r of Object.values(e.reveals as object)) checkReveal(r); }
+  else if (e.type === 'stuck' || e.type === 'dead') { assert(e.reveals && typeof e.reveals === 'object', 'Malformed reveal.'); for (const r of Object.values(e.reveals as object)) checkReveal(r); }
   else assert(false, 'Unknown event.');
 }
 function checkRound(round: unknown): asserts round is Round {
@@ -148,7 +161,7 @@ function checkRound(round: unknown): asserts round is Round {
 
 /** Replays a round. Throws GameError on any illegal event. `known` holds the ranks this peer is entitled to know up front. */
 export function simulate(round: Round, known: Partial<Record<Color, Record<string, Rank>>>): Sim {
-  const sim: Sim = { board: Array<Piece | null>(100).fill(null), turn: 'red', pending: null, captured: { red: [], blue: [] }, combats: [], lastMove: null, winner: null, reason: '', recent: { red: [], blue: [] }, moveCount: 0, reveals: [] };
+  const sim: Sim = { board: Array<Piece | null>(100).fill(null), turn: 'red', pending: null, captured: { red: [], blue: [] }, combats: [], lastMove: null, winner: null, reason: '', dead: {}, recent: { red: [], blue: [] }, moveCount: 0, reveals: [] };
   for (const color of COLORS) {
     for (const entry of round.setups[color] ?? []) sim.board[entry.square] = { id: entry.id, owner: color, rank: known[color]?.[entry.id] ?? null, revealed: false, moved: false };
   }
@@ -170,7 +183,7 @@ export function simulate(round: Round, known: Partial<Record<Color, Record<strin
   const remember = (color: Color, id: string, a: number, b: number) => { sim.recent[color] = [...sim.recent[color], { id, a, b }].slice(-3); };
   const finish = (winner: Color, reason: string) => { sim.winner = winner; sim.reason = reason; };
   round.log.forEach((event, index) => {
-    assert(started && !sim.winner, 'Moves arrived before both armies were placed or after the game ended.');
+    assert(started && !sim.winner && sim.reason !== 'dead', 'Moves arrived before both armies were placed or after the game ended.');
     if (event.type === 'move') {
       assert(!sim.pending && event.by === sim.turn, 'It is not that player’s turn.');
       const piece = sim.board[event.from];
@@ -204,6 +217,19 @@ export function simulate(round: Round, known: Partial<Record<Color, Record<strin
       return;
     }
     assert(!sim.pending && event.by === sim.turn, 'It is not that player’s turn.');
+    if (event.type === 'dead') {
+      assert(!sim.dead[event.by], 'That player already claimed a dead position.');
+      assert(minersLeft(sim, other(event.by)) === 0, 'A dead position needs every enemy Miner captured.');
+      for (const [id, reveal] of Object.entries(event.reveals)) {
+        const piece = sim.board.find(p => p?.owner === event.by && p.id === id);
+        assert(piece, 'A dead-position claim revealed a piece that is not on the board.');
+        learn(piece, reveal, index);
+      }
+      assert(sealedFlag(sim.board, event.by) !== null, 'The flag is not sealed behind bombs.');
+      sim.dead[event.by] = true;                     // the claim spends no turn: the player still moves
+      if (sim.dead.red && sim.dead.blue) sim.reason = 'dead';
+      return;
+    }
     const pieces = alive(event.by);
     assert(Object.keys(event.reveals).length === pieces.length && pieces.every(p => event.reveals[p.id]), 'A stuck player must reveal every remaining piece.');
     for (const piece of pieces) learn(piece, event.reveals[piece.id]!, index);
@@ -212,7 +238,7 @@ export function simulate(round: Round, known: Partial<Record<Color, Record<strin
     assert(!hasAnyMove(sim, event.by), 'That player still has a legal move.');
     finish(other(event.by), 'stuck');
   });
-  if (!sim.winner) {
+  if (!sim.winner && sim.reason !== 'dead') {
     const quit = COLORS.filter(color => round.resigned[color]);
     if (quit.length === 2) { sim.reason = 'draw'; }
     else if (quit.length === 1) finish(other(quit[0]!), 'resigned');
@@ -220,7 +246,8 @@ export function simulate(round: Round, known: Partial<Record<Color, Record<strin
   return sim;
 }
 
-export const roundOver = (round: Round, known: Partial<Record<Color, Record<string, Rank>>>) => { const sim = simulate(round, known); return !!sim.winner || sim.reason === 'draw'; };
+export const isOver = (sim: Sim) => !!sim.winner || sim.reason === 'draw' || sim.reason === 'dead';
+export const roundOver = (round: Round, known: Partial<Record<Color, Record<string, Rank>>>) => isOver(simulate(round, known));
 
 /** A sensible random layout: flag on the back row wrapped in bombs, miners and the spy behind, everything else shuffled. */
 export function randomSetup(color: Color): Record<number, Rank> {
@@ -292,7 +319,7 @@ export class Game {
   view(): View {
     const round = this.round, color = this.color, sim = this.sim();
     const mySetupDone = !!round.setups[color], theirSetupDone = !!round.setups[other(color)];
-    const phase = sim.winner || sim.reason === 'draw' ? 'over' : mySetupDone && theirSetupDone ? 'play' : 'setup';
+    const phase = isOver(sim) ? 'over' : mySetupDone && theirSetupDone ? 'play' : 'setup';
     const board = sim.board.map(piece => piece && piece.owner !== color && !piece.revealed ? { ...piece, rank: null } : piece);
     return {
       round: this.index + 1, color, phase, mySetupDone, theirSetupDone, board, turn: sim.turn, myTurn: phase === 'play' && sim.turn === color && !sim.pending, pending: sim.pending,
@@ -345,13 +372,18 @@ export class Game {
     this.append(event);
     this.changed();
   }
-  /** Answers an attack on one of our pieces, or declares that we cannot move. Safe to call at any time. */
+  /** Answers an attack on one of our pieces, declares that we cannot move, or claims a dead position. Safe to call at any time. */
   respond() {
+    let acted = false;
+    while (this.respondOnce()) acted = true;
+    return acted;
+  }
+  private respondOnce() {
     if (this.error) return false;
     const round = this.round;
     if (!COLORS.every(color => round.setups[color])) return false;
     const sim = this.sim();
-    if (sim.winner || sim.reason === 'draw') return false;
+    if (isOver(sim)) return false;
     if (sim.pending && sim.board[sim.pending.to]?.owner === this.color && sim.turn !== this.color) {
       this.append({ type: 'defend', by: this.color, reveal: this.reveal(sim.board[sim.pending.to]!.id) });
       this.changed(); return true;
@@ -360,6 +392,14 @@ export class Game {
       const reveals: Record<string, Reveal> = {};
       for (const piece of sim.board) if (piece?.owner === this.color) reveals[piece.id] = this.reveal(piece.id);
       this.append({ type: 'stuck', by: this.color, reveals });
+      this.changed(); return true;
+    }
+    // Our flag can never be reached (sealed behind bombs, no enemy Miners left): say so. Two such claims make the round a draw.
+    const flag = !sim.pending && sim.turn === this.color && !sim.dead[this.color] && minersLeft(sim, other(this.color)) === 0 ? sealedFlag(sim.board, this.color) : null;
+    if (flag !== null) {
+      const reveals: Record<string, Reveal> = {};
+      for (const sq of [flag, ...neighbours(flag)]) { const piece = sim.board[sq]; if (piece?.owner === this.color) reveals[piece.id] = this.reveal(piece.id); }
+      this.append({ type: 'dead', by: this.color, reveals });
       this.changed(); return true;
     }
     return false;

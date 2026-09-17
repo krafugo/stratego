@@ -20,7 +20,7 @@ The complete rules and a card for every piece are in the game itself: **How to p
 - A piece moves one square orthogonally onto an empty square or an enemy. Scouts move any distance in a straight line and may attack at the end of the run; running more than one square reveals the piece as a Scout. Bombs and the Flag never move.
 - Attacking reveals both pieces. Higher rank wins; equal ranks are both removed; the survivor stays revealed. The Spy wins only when it attacks the Marshal. A Miner defuses a Bomb; anything else that attacks a Bomb is lost and the Bomb stays. Attacking the Flag ends the game.
 - Two-square rule: a piece may not move back and forth between the same two squares for a fourth consecutive move.
-- A player whose turn it is with no legal move loses. Resigning is allowed at any time. Rematches are unlimited within a room (up to 100 rounds).
+- A player whose turn it is with no legal move loses. When both flags are sealed behind bombs and neither side has a Miner left, no flag can ever be captured and the round is a draw (each side proves it by revealing its flag and the bombs around it; the claim costs no turn). Resigning is allowed at any time. Rematches are unlimited within a room (up to 100 rounds).
 
 ## Run it locally
 
