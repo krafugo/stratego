@@ -51,34 +51,12 @@ To try both seats in two tabs of the same browser without WebRTC (useful on VPNs
 
 ## How online play works (and what "free" means)
 
-GitHub Pages serves only the HTML, CSS and JavaScript; there is no game server. A room runs **two transports at once** and the game does not care which one delivers a move — both peers merge every transcript they receive, so duplicates are harmless and whichever path is up first carries the game.
+GitHub Pages serves only the HTML, CSS and JavaScript; there is no game server. Rooms come from **[peer-room](https://github.com/krafugo/peer-room)**, a small library extracted from this project: a room runs two transports at once and the game does not care which one delivers a move.
 
-**Direct (WebRTC).** PeerJS's public PeerServer performs discovery and signalling; the two browsers then exchange the transcript over a reliable, end-to-end encrypted WebRTC data channel. The ICE server pool (`public/connection-config.js`) lists several free public STUN servers plus any TURN relays you configure. Every TURN entry is probed when a room opens and only the relays that actually answer are used, so a dead relay never slows a connection down.
+- **Direct (WebRTC)** — PeerJS's public PeerServer performs discovery and signalling; the two browsers then exchange the transcript over a reliable, end-to-end encrypted data channel. A pool of free public STUN servers is always offered; TURN relays configured in `public/connection-config.js` are probed when a room opens and only the ones that answer are used.
+- **Relay (MQTT)** — when a direct path cannot form (symmetric NATs, VPNs, mobile carriers, offices) the transcript rides on public MQTT brokers over WebSocket instead. Each seat's latest transcript is retained on the brokers, so a move made while the opponent is offline is delivered the moment they return, even hours later. Everything is sealed with AES-GCM under a key derived from the room code; the brokers see only ciphertext.
 
-**Relay (MQTT).** When a direct path cannot form — symmetric NATs, VPNs, mobile carriers, corporate networks — the game rides on public MQTT brokers over WebSocket instead. Each seat publishes its latest transcript as a *retained* message on `stratego/v1/<room>/<seat>` and subscribes to the other seat, so:
-
-- a move made while the opponent is offline is delivered the moment they come back, even hours later;
-- a phone that drops and reconnects simply picks up where it was;
-- all configured brokers are used at the same time, and one reachable broker is enough.
-
-Everything on the relay is sealed with AES-GCM under a key derived from the room code; the brokers, and anyone browsing them, see only ciphertext (positions and commitments are all that ever leave a device — ranks and salts never do). Presence comes from a 20 s heartbeat plus an MQTT will message, so the banner shows **Connected · relay** when both players are on and **"… is away · your moves are stored"** when one is not. The badge on the banner tells you which path is in use (**P2P** or **Relay**).
-
-The public PeerServer, the STUN servers and the public brokers (EMQX, HiveMQ and Eclipse Mosquitto's test broker) are shared services offered for exactly this kind of low-traffic use; they carry a few kilobytes per move, but they come with no uptime guarantee from this project. Retained transcripts stay on the brokers (encrypted) until a player presses **Leave room**, which clears them.
-
-### Configuration (`public/connection-config.js`)
-
-```js
-window.STRATEGO_CONNECTION = {
-  iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }],
-  turnServers: [/* { urls: [...], username, credential } — e.g. a Metered Open Relay or ExpressTURN free account */],
-  turnCredentialEndpoints: [/* 'https://your-worker.example/ice' — returns { iceServers: [...] } with short-lived credentials */],
-  brokers: ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081'],
-};
-```
-
-- **TURN** makes the *direct* path succeed on hostile networks. There is no dependable account-less public TURN relay any more (the Open Relay Project now requires a free API key), so either add a free account's static credentials to `turnServers` — knowing that anything in this public file can be read and reused by others — or run a tiny credential endpoint (a Cloudflare Worker is enough) and list it in `turnCredentialEndpoints`. Never embed a private API key here.
-- **Brokers** can be replaced by your own MQTT broker with WebSocket enabled, or emptied to turn the relay off.
-- A custom PeerServer can be configured with `peerServer: { host, port: 443, path: '/', secure: true }`.
+The banner shows which path is in use (**P2P** or **Relay**) and says when the opponent is away and moves are being stored. The public PeerServer, STUN servers and brokers are shared services with no uptime guarantee from this project; `public/connection-config.js` documents how to point at your own TURN relay, credential endpoint, brokers or PeerServer, and the peer-room README explains every option.
 
 ## Fair play without a server
 
@@ -102,12 +80,9 @@ This is a friendly peer-to-peer game, not an anti-cheat service: it cannot stop 
 
 - `src/game.ts` — the engine: rules, movement, combat, commitments, deterministic replay and transcript merging.
 - `src/pieces.ts` — the piece catalogue: ranks, counts, descriptions and SVG insignia.
-- `src/network.ts` — the room: seat admission, status, and the direct WebRTC transport (PeerJS signalling, heartbeat, reconnection).
-- `src/relay.ts`, `src/mqtt.ts` — the encrypted store-and-forward relay over public MQTT brokers and the small MQTT-over-WebSocket client it uses.
-- `src/ice.ts` — the STUN/TURN pool with relay probing.
+- Rooms, transports, seats and storage come from the `peer-room` dependency; `src/main.ts` wires them to the game.
 - `src/main.ts`, `src/tokens.ts`, `src/guide.ts`, `src/style.css` — lobby, board, tokens, setup flow, battle reports, tracker and the how-to-play guide.
-- `src/local.ts` — development-only same-browser transport.
-- `tests/*.test.ts` — engine, protocol, MQTT codec, relay crypto and ICE selection tests.
+- `tests/game.test.ts` — engine and protocol tests (the transport has its own suite in peer-room).
 
 ## Branching
 
