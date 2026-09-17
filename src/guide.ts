@@ -20,6 +20,7 @@ export function guide() {
       <li><strong>Anything else attacks a Bomb:</strong> the attacker is destroyed; the bomb stays.</li>
       <li><strong>Anything attacks the Flag:</strong> the game is over.</li>
       <li><strong>No legal move</strong> on your turn also loses the game, so keep some movers alive.</li>
+      <li><strong>Dead position:</strong> when both flags are sealed behind bombs and neither side has a Miner left, no flag can ever be taken — the game is a draw.</li>
     </ul></section>
     <section class="piece-guide"><span class="eyebrow">THE ARMY · 12 KINDS OF PIECE</span><div class="piece-cards">${cards}</div></section>
   </div>`;
