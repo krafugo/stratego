@@ -1,55 +1,39 @@
 import './style.css';
 import { registerSW } from 'virtual:pwa-register';
-import { Game, GameError, LAKES, colOf, other, randomSetup, rowOf, type Color, type Combat, type Round, type View } from './game.ts';
+import { Game, GameError, LAKES, colOf, other, randomSetup, rowOf, type Color, type Combat, type Round, type Saved, type View } from './game.ts';
 import { PIECES, PIECE_BY_RANK, type Rank } from './pieces.ts';
 import { arrow, crest, e, ordinal, token } from './tokens.ts';
 import { guide } from './guide.ts';
-import { Room, createSession, normalizeCode, validCode, type Callbacks, type Path, type Session, type StatusKind } from './network.ts';
-import { DEFAULT_BROKERS, planIce } from './ice.ts';
-import { LocalConnection } from './local.ts';
+import { Room, SeatStore, createSeat, normalizeCode, roomFromHash, roomHash as buildRoomHash, validCode, type Member, type Path, type Seat, type StatusKind } from 'peer-room';
 
 registerSW({ immediate: true });
 
+const APP = 'stratego';
 type Draft = { round: number; color: Color; placement: Record<number, Rank> };
-type StoredSession = Session & { draft?: Draft; transport?: 'local'; savedAt?: number };
-const SEAT_TTL = 7 * 24 * 60 * 60 * 1000;
+/** Everything this seat needs to resume: the game (with this player's ranks and salts), the setup being edited, and who sits across. */
+interface SeatState { game?: Saved; draft?: Draft; remoteName?: string; remoteToken?: string; members?: Pick<Member, 'token' | 'name' | 'role'>[]; transport?: 'local' }
+type StoredSession = { seat: Seat; state: SeatState };
 
 const root = document.querySelector<HTMLElement>('#app')!;
 const linkParams = new URLSearchParams(location.hash.slice(1));
 // Dev only: `#seat=<name>` keeps two seats of the same browser apart while testing with the local transport.
-const storageKey = 'stratego-session-v1' + (import.meta.env.DEV && linkParams.get('seat') ? ':' + linkParams.get('seat') : '');
-// The seat (token, army ranks and salts) lives in localStorage so a killed tab,
-// a backgrounded phone browser or a fresh open of the room link rejoins the
-// same game. sessionStorage is the fallback when localStorage is blocked.
-const storage: Storage | null = (() => {
-  for (const candidate of [() => localStorage, () => sessionStorage]) {
-    try { const store = candidate(); store.setItem('stratego-probe', '1'); store.removeItem('stratego-probe'); return store; } catch {}
-  }
-  return null;
-})();
-const linkRoom = normalizeCode(linkParams.get('room') ?? '');
-let session: StoredSession | null = null, game: Game | null = null, network: Room | LocalConnection | null = null;
+const store = new SeatStore<SeatState>(`${APP}-seat-v2` + (import.meta.env.DEV && linkParams.get('seat') ? ':' + linkParams.get('seat') : ''));
+const linkRoom = roomFromHash();
+let session: StoredSession | null = null, game: Game | null = null, network: Room | null = null;
 const localTransport = import.meta.env.DEV && linkParams.get('transport') === 'local';
 let state: StatusKind | 'home' = 'home', status = '', path: Path = 'none', message = '', fatal = '', busy = false;
-let joining = !!linkParams.get('room');
-let draftName = '', draftCode = linkParams.get('room') ?? '';
+let joining = !!linkRoom;
+let draftName = '', draftCode = linkRoom;
 let selected: number | null = null, rulesOpen = false, leaveOpen = false, lastSent = '', storageWarning = '';
-let resume: StoredSession | null = null;
-try {
-  const raw = JSON.parse(storage?.getItem(storageKey) ?? 'null');
-  if (raw?.version === 1 && validCode(raw.code) && ['host', 'guest'].includes(raw.role) && raw.token && Date.now() - (raw.savedAt ?? Date.now()) < SEAT_TTL) resume = raw;
-  else if (raw) storage?.removeItem(storageKey);
-} catch {}
+let resume: StoredSession | null = (() => { const saved = store.load(); return saved && saved.seat.app === APP ? { seat: saved.seat, state: saved.state } : null; })();
 
 const FILES = 'ABCDEFGHIJ';
 const squareName = (sq: number) => `${FILES[colOf(sq)]}${10 - rowOf(sq)}`;
 
 function persist() {
   if (!session) return;
-  if (game) session.game = game.saved();
-  session.savedAt = Date.now();
-  try { storage?.setItem(storageKey, JSON.stringify(session)); if (!storage) throw new Error('no storage'); }
-  catch { storageWarning = 'This browser can’t save your game. Keep this tab open; refreshing or closing it will lose your place.'; }
+  if (game) session.state.game = game.saved();
+  if (!store.save(session.seat, session.state)) storageWarning = 'This browser can’t save your game. Keep this tab open; refreshing or closing it will lose your place.';
 }
 function sync(force = false) {
   if (!game) return;
@@ -70,11 +54,11 @@ function onGameChange() { persist(); sync(); render(); }
 
 /** The arrangement being edited for the current round, created lazily and remembered across refreshes. */
 function draft(v: View): Record<number, Rank> {
-  const current = session!.draft;
+  const current = session!.state.draft;
   if (current && current.round === v.round && current.color === v.color) return current.placement;
-  session!.draft = { round: v.round, color: v.color, placement: randomSetup(v.color) };
+  session!.state.draft = { round: v.round, color: v.color, placement: randomSetup(v.color) };
   persist();
-  return session!.draft.placement;
+  return session!.state.draft.placement;
 }
 
 async function start(role: 'host' | 'guest', existing: StoredSession | null = null) {
@@ -84,38 +68,41 @@ async function start(role: 'host' | 'guest', existing: StoredSession | null = nu
   if (!existing && role === 'guest' && !validCode(code)) { message = 'Enter the 8-character room code from your friend.'; render(); document.querySelector<HTMLInputElement>('#room-code')?.focus(); return; }
   busy = true; message = ''; render();
   try {
-    const local = import.meta.env.DEV && (localTransport || existing?.transport === 'local');
-    const settings = window.STRATEGO_CONNECTION ?? {};
-    status = 'Checking connection routes…'; render();
-    const ice = local ? null : await planIce(settings);
-    session = existing ?? createSession(role, draftName, role === 'guest' ? code : undefined);
-    if (local) session.transport = 'local';
-    state = 'connecting'; status = 'Opening a connection…'; selected = null; lastSent = '';
-    game = new Game(session.code, session.game, onGameChange, session.role);
+    const local = import.meta.env.DEV && (localTransport || existing?.state.transport === 'local');
+    const opened = existing ?? { seat: await createSeat(APP, role, draftName, role === 'guest' ? code : undefined), state: {} };
+    if (local) opened.state.transport = 'local';
+    game = new Game(opened.seat.code, opened.state.game, onGameChange, opened.seat.role);
     try { game.view(); } catch { // a saved game this version cannot read: start the room over rather than boot into an error
-      game = new Game(session.code, null, onGameChange, session.role); delete session.draft; message = 'The saved match could not be read, so this room starts a new round.';
+      game = new Game(opened.seat.code, null, onGameChange, opened.seat.role); delete opened.state.draft; message = 'The saved match could not be read, so this room starts a new round.';
     }
-    const callbacks: Callbacks = {
-      status(kind, text, via) { state = kind; status = text; path = via; render(); },
-      ready(remote) { Object.assign(session!, { remoteName: remote.name, remoteToken: remote.token }); state = 'connected'; persist(); sync(true); game?.respond(); render(); },
-      data(rounds) {
-        game?.receive(rounds)
-          .then(() => { if (game && peerIsBehind(rounds, game.snapshot().rounds)) sync(true); })
+    session = opened;
+    state = 'connecting'; status = 'Checking connection routes…'; selected = null; lastSent = ''; render();
+    network = await Room.open(session.seat, {
+      seats: 2, members: session.state.members, settings: window.STRATEGO_CONNECTION,
+      transports: local ? { local: true, direct: false, relay: false } : undefined,
+    }, {
+      status: s => { state = s.kind; status = s.text; path = s.path; render(); },
+      members: list => {
+        if (!session) return;
+        const them = list.find(m => m.token !== session!.seat.token);
+        if (them) { session.state.remoteName = them.name; session.state.remoteToken = them.token; if (them.online) game?.respond(); }
+        session.state.members = list.map(m => ({ token: m.token, name: m.name, role: m.role }));
+        persist(); render();
+      },
+      data: env => {
+        game?.receive(env.data)
+          .then(() => { if (game && peerIsBehind(env.data, game.snapshot().rounds)) sync(true); })
           .catch((err: unknown) => { fatal = err instanceof Error ? err.message : 'Sync failed.'; render(); });
       },
-      error(text) { fatal = text; render(); },
-    };
-    network = local ? new LocalConnection(session, callbacks) : new Room(session, callbacks, {
-      peer: { ...settings.peerServer, debug: 0, config: { iceServers: ice!.servers, ...(settings.iceTransportPolicy ? { iceTransportPolicy: settings.iceTransportPolicy } : {}) } },
-      brokers: settings.brokers ?? DEFAULT_BROKERS,
+      error: text => { fatal = text; render(); },
     });
-    persist();
+    persist(); sync(true);
     window.history.replaceState(null, '', roomHash(session));
   } catch (err) { message = err instanceof Error ? err.message : 'Couldn’t open the room. Please try again.'; if (!network) { session = null; game = null; state = 'home'; } }
   busy = false; render();
 }
 
-const roomHash = (s: StoredSession) => '#' + new URLSearchParams({ room: s.code, ...(s.transport === 'local' ? { transport: 'local' } : {}), ...(import.meta.env.DEV && linkParams.get('seat') ? { seat: linkParams.get('seat')! } : {}) }).toString();
+const roomHash = (s: StoredSession) => buildRoomHash(s.seat.code, { ...(s.state.transport === 'local' ? { transport: 'local' } : {}), ...(import.meta.env.DEV && linkParams.get('seat') ? { seat: linkParams.get('seat')! } : {}) });
 function inviteURL() { const url = new URL(location.href); url.hash = roomHash(session!); return url.href; }
 async function copyInvite(share: boolean) {
   try {
@@ -129,9 +116,9 @@ function home() {
   const sample = [['10', 'red'], [null, 'blue'], ['3', 'red'], ['B', 'blue'], [null, 'blue'], ['2', 'red'], ['F', 'red'], [null, 'blue'], ['S', 'red']] as const;
   return `<div class="lobby-grid"><section class="start-panel"><div class="eyebrow"><span class="tiny-line"></span>A BATTLE OF WITS FOR TWO</div><h1>Hide the flag.<br><span>Read their army.</span></h1><p class="intro">Classic Stratego, browser to browser. Send a room code to a friend anywhere in the world and play on the same board — no account, no server, no downloads.</p>
     <div class="play-box">
-      ${resume ? `<div class="resume"><div><strong>Your war room is still open</strong><p>${e(resume.code)} · ${e(resume.name)}</p></div><button class="button small" data-action="resume">Resume ${arrow}</button></div>` : ''}
+      ${resume ? `<div class="resume"><div><strong>Your war room is still open</strong><p>${e(resume.seat.code)} · ${e(resume.seat.name)}</p></div><button class="button small" data-action="resume">Resume ${arrow}</button></div>` : ''}
       <div class="tabs" role="tablist" aria-label="Choose how to play"><button id="create-tab" role="tab" aria-selected="${!joining}" tabindex="${joining ? -1 : 0}" data-action="create-tab">Create a room</button><button id="join-tab" role="tab" aria-selected="${joining}" tabindex="${joining ? 0 : -1}" data-action="join-tab">Join a friend</button></div>
-      <form id="play-form"><label for="player-name">Your name <span>optional</span></label><input id="player-name" name="name" autocomplete="nickname" maxlength="20" placeholder="General…" value="${e(draftName)}" />${joining ? `<label for="room-code">Room code</label><input id="room-code" class="code-input" name="room" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="12" placeholder="ABCD EFGH" value="${e(draftCode)}" required />` : ''}<button class="button primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Connecting…' : joining ? 'Join the battle' : 'Open a war room'} ${arrow}</button><p class="form-note">${joining ? 'Paste the code or open the link your friend sent you.' : 'You get a room code and a link to share with one friend.'}</p></form>
+      <form id="play-form"><label for="player-name">Your name <span>optional</span></label><input id="player-name" name="name" autocomplete="nickname" maxlength="20" placeholder="General…" value="${e(draftName)}" />${joining ? `<label for="room-code">Room code</label><input id="room-code" class="code-input" name="room" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="12" placeholder="ABCD EFGH" value="${e(draftCode)}" required />` : ''}<button class="button primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Connecting…' : joining ? 'Join the battle' : 'Open a war room'} ${arrow}</button><p class="form-note">${joining ? 'Paste the code or open the link your friend sent you.' : 'You get a room code and a link to share with one friend.'}</p><div class="message ${message ? '' : 'empty'}" role="alert">${e(message)}</div></form>
     </div><div class="lobby-meta"><span>Encrypted P2P</span><span>Verified reveals</span><span>No account</span></div></section>
   <aside class="intro-aside"><div class="sample-board"><div class="board-top"><span class="eyebrow">TWO ARMIES · ONE FLAG</span><span class="player-tag">40</span></div><div class="sample-grid">${sample.map(([rank, color]) => `<span class="sample-cell">${token(rank, color)}</span>`).join('')}</div><div class="sample-divider"></div><div class="sample-legend"><div>${token('10', 'red', { size: 'sm' })}<span>Your pieces show their rank</span></div><div>${token(null, 'blue', { size: 'sm' })}<span>Enemy ranks stay hidden until they fight</span></div></div></div><div class="quick-rules"><span class="eyebrow">HOW IT WORKS</span><h2>Every reveal is<br>cryptographically checked.</h2><p>Each army is committed with salted hashes before the first move. When a piece fights, its owner proves the rank against that commitment, so neither browser has to trust the other.</p><a class="text-button" href="#how-to-play" data-action="rules">How to play <span>↓</span></a></div></aside></div>
   <section id="how-to-play" class="how-to-play"><div class="section-heading"><h2>How to play</h2><span>Classic rules · 10 × 10 board</span></div>${guide()}</section>`;
@@ -139,7 +126,7 @@ function home() {
 
 // ---------- Room ----------
 function inviteBox() {
-  return `<div class="invite-box"><span class="eyebrow">ROOM CODE</span><div class="room-code">${e(session!.code.slice(0, 4))}<span> </span>${e(session!.code.slice(4))}</div><div class="invite-actions"><button class="button primary" data-action="share">Send invite ${arrow}</button><button class="button secondary" data-action="copy">Copy link</button></div><label class="sr-only" for="invite-link">Invite link</label><input id="invite-link" readonly value="${e(inviteURL())}" /></div>`;
+  return `<div class="invite-box"><span class="eyebrow">ROOM CODE</span><div class="room-code">${e(session!.seat.code.slice(0, 4))}<span> </span>${e(session!.seat.code.slice(4))}</div><div class="invite-actions"><button class="button primary" data-action="share">Send invite ${arrow}</button><button class="button secondary" data-action="copy">Copy link</button></div><label class="sr-only" for="invite-link">Invite link</label><input id="invite-link" readonly value="${e(inviteURL())}" /></div>`;
 }
 
 function boardHTML(v: View) {
@@ -196,8 +183,8 @@ function graveyard(v: View) {
 }
 
 function aside(v: View) {
-  const friend = e(session!.remoteName ?? 'Your opponent'), hasFriend = !!session!.remoteToken, me = v.color;
-  const seat = `<div class="seat-card"><div><span class="eyebrow">YOU COMMAND</span><strong>${e(session!.name)} · ${ordinal(me)}</strong></div><div><span class="eyebrow">ACROSS THE FIELD</span><strong>${hasFriend ? friend : 'Waiting to join'} · ${ordinal(other(me))}</strong></div></div>`;
+  const friend = e(session!.state.remoteName ?? 'Your opponent'), hasFriend = !!session!.state.remoteToken, me = v.color;
+  const seat = `<div class="seat-card"><div><span class="eyebrow">YOU COMMAND</span><strong>${e(session!.seat.name)} · ${ordinal(me)}</strong></div><div><span class="eyebrow">ACROSS THE FIELD</span><strong>${hasFriend ? friend : 'Waiting to join'} · ${ordinal(other(me))}</strong></div></div>`;
   if (fatal || game!.error) return `<section class="game-panel"><div class="phase-label">GAME PAUSED</div><h1>Let’s start fresh.</h1><p>${e(fatal || game!.error)}</p><button class="button primary" data-action="leave">Back to the lobby ${arrow}</button></section>`;
   if (v.phase === 'setup') {
     const controls = v.mySetupDone
@@ -212,12 +199,12 @@ function aside(v: View) {
   }
   const title = v.outcome === 'win' ? 'Victory.' : v.outcome === 'loss' ? `${friend} wins.` : 'A draw.';
   const why = v.reason === 'flag' ? (v.outcome === 'win' ? 'You captured the enemy flag.' : 'Your flag was captured.') : v.reason === 'stuck' ? (v.outcome === 'win' ? `${friend} had no legal move left.` : 'You had no legal move left.') : v.reason === 'resigned' ? (v.outcome === 'win' ? `${friend} resigned.` : 'You resigned.') : 'Both players resigned.';
-  return `<section class="game-panel result ${v.outcome}"><div class="phase-label">${v.outcome === 'win' ? 'YOU WIN THIS ROUND' : v.outcome === 'loss' ? `${friend.toUpperCase()} WINS` : 'IT’S A DRAW'}</div><h1>${title}</h1><p>${why} ${v.moveCount} moves were played.</p>${battleCard(v)}<button class="button primary" data-action="again" ${v.myAgain || !session!.remoteToken ? 'disabled' : ''}>${v.myAgain ? `Waiting for ${friend}…` : v.theirAgain ? `${friend} wants a rematch · Play again` : 'Play again · colours swap'} ${arrow}</button><div class="message ${message ? '' : 'empty'}" role="status">${e(message)}</div></section>${graveyard(v)}${seat}`;
+  return `<section class="game-panel result ${v.outcome}"><div class="phase-label">${v.outcome === 'win' ? 'YOU WIN THIS ROUND' : v.outcome === 'loss' ? `${friend.toUpperCase()} WINS` : 'IT’S A DRAW'}</div><h1>${title}</h1><p>${why} ${v.moveCount} moves were played.</p>${battleCard(v)}<button class="button primary" data-action="again" ${v.myAgain || !session!.state.remoteToken ? 'disabled' : ''}>${v.myAgain ? `Waiting for ${friend}…` : v.theirAgain ? `${friend} wants a rematch · Play again` : 'Play again · colours swap'} ${arrow}</button><div class="message ${message ? '' : 'empty'}" role="status">${e(message)}</div></section>${graveyard(v)}${seat}`;
 }
 
 function room() {
   const v = game!.view();
-  const top = `<div class="room-heading"><div><span class="eyebrow">ROOM</span><button class="room-pill" data-action="copy">${e(session!.code.slice(0, 4))} ${e(session!.code.slice(4))}<span>↗</span></button></div><button class="text-button muted" data-action="leave">Leave room</button></div><div class="connection-banner ${state === 'connected' ? 'connected' : state === 'waiting' && path === 'relay' && session!.remoteToken ? 'stored' : ''}" role="status"><span class="connection-dot"></span><span>${e(status)}</span>${path !== 'none' ? `<span class="path-badge">${path === 'direct' ? 'P2P' : 'Relay'}</span>` : ''}</div>${storageWarning ? `<div class="message">${e(storageWarning)}</div>` : ''}`;
+  const top = `<div class="room-heading"><div><span class="eyebrow">ROOM</span><button class="room-pill" data-action="copy">${e(session!.seat.code.slice(0, 4))} ${e(session!.seat.code.slice(4))}<span>↗</span></button></div><button class="text-button muted" data-action="leave">Leave room</button></div><div class="connection-banner ${state === 'connected' ? 'connected' : state === 'waiting' && path === 'relay' && session!.state.remoteToken ? 'stored' : ''}" role="status"><span class="connection-dot"></span><span>${e(status)}</span>${path !== 'none' ? `<span class="path-badge">${path === 'direct' ? 'P2P' : 'Relay'}</span>` : ''}</div>${storageWarning ? `<div class="message">${e(storageWarning)}</div>` : ''}`;
   return `${top}<div class="game-grid">${boardHTML(v)}<aside class="game-aside">${aside(v)}</aside>${v.phase !== 'setup' ? tracker(v) : ''}</div>`;
 }
 
@@ -235,7 +222,7 @@ function leaveRoom() {
   network?.close();
   session = null; game = null; network = null; resume = null;
   state = 'home'; status = ''; path = 'none'; message = ''; fatal = ''; leaveOpen = false; selected = null; lastSent = '';
-  try { storage?.removeItem(storageKey); } catch {}
+  store.clear();
   window.history.replaceState(null, '', location.pathname + location.search); render();
 }
 function closeDialog(id: string) { document.querySelector<HTMLDialogElement>(id)?.close(); }
@@ -288,12 +275,12 @@ root.addEventListener('click', async event => {
   const action = button.dataset.action;
   if (action === 'create-tab') { joining = false; render(); }
   else if (action === 'join-tab') { joining = true; render(); }
-  else if (action === 'resume' && resume) await start(resume.role, resume);
+  else if (action === 'resume' && resume) await start(resume.seat.role, resume);
   else if (action === 'rules') { if (session) { event.preventDefault(); rulesOpen = true; render(); } }
   else if (action === 'close-rules') { rulesOpen = false; closeDialog('#rules-dialog'); }
   else if (action === 'copy') await copyInvite(false);
   else if (action === 'share') await copyInvite(true);
-  else if (action === 'shuffle') { if (session && game) { session.draft = { round: game.view().round, color: game.color, placement: randomSetup(game.color) }; selected = null; persist(); render(); } }
+  else if (action === 'shuffle') { if (session && game) { session.state.draft = { round: game.view().round, color: game.color, placement: randomSetup(game.color) }; selected = null; persist(); render(); } }
   else if (action === 'ready') {
     if (!game || busy) return;
     busy = true; message = ''; render();
@@ -344,4 +331,4 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 render();
 // Opening the room's own link (a reload, a killed tab, a phone coming back) rejoins the saved seat straight away.
-if (resume && linkRoom && linkRoom === resume.code) void start(resume.role, resume);
+if (resume && linkRoom && linkRoom === resume.seat.code) void start(resume.seat.role, resume);
