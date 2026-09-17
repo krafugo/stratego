@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Game, GameError, checkPlacement, colorFor, homeSquares, randomSetup, resolveCombat, rowOf, shuttleBlocked, type Color, type Round } from '../src/game.ts';
+import { Game, GameError, checkPlacement, colorFor, homeSquares, minersLeft, randomSetup, resolveCombat, rowOf, sealedFlag, shuttleBlocked, simulate, type Color, type Round } from '../src/game.ts';
 import { ARMY, PIECES, PIECE_BY_RANK, type Rank } from '../src/pieces.ts';
 import { commitment } from '../src/crypto.ts';
 
@@ -229,4 +229,61 @@ test('saved state restores the same view, and resignation ends the round', async
   guest.resign(); await sync(host, guest);
   assert.equal(host.view().outcome, 'win'); assert.equal(host.view().reason, 'resigned'); assert.equal(guest.view().outcome, 'loss');
   assert.equal(PIECE_BY_RANK['3'].name, 'Miner');
+});
+
+/** Both flags in a corner sealed by two bombs; five Miners per side face each other on the open files. */
+const sealedRed: Record<number, Rank> = { 90: 'F', 80: 'B', 91: 'B', 60: '3', 61: '3', 65: '3', 68: '3', 69: '3' };
+const sealedBlue: Record<number, Rank> = { 0: 'F', 1: 'B', 10: 'B', 30: '3', 31: '3', 35: '3', 38: '3', 39: '3' };
+/** The first legal move of the side to play. */
+const anyMove = (game: Game): [number, number] => { for (let sq = 0; sq < 100; sq++) { const t = game.legalTargets(sq); if (t.length) return [sq, t[0]!]; } throw new Error('no move'); };
+/** On each open file a Miner marches out and trades with its opposite number; the side to move leads each trade. */
+async function tradeMiners(host: Game, guest: Game) {
+  for (const [i, col] of [0, 1, 5, 8, 9].entries()) {
+    const [lead, follow, leadHome, followHome] = i % 2 === 0 ? [host, guest, 60, 30] : [guest, host, 30, 60];
+    const step = (from: number, home: number) => (home === 60 ? from - 10 : from + 10);
+    lead.move(leadHome + col, step(leadHome + col, leadHome)); await sync(host, guest);
+    follow.move(followHome + col, step(followHome + col, followHome)); await sync(host, guest);
+    lead.move(step(leadHome + col, leadHome), step(followHome + col, followHome)); await sync(host, guest);   // Miner vs Miner: both removed
+  }
+}
+
+test('when both flags are sealed behind bombs and no Miner is left, the round is a draw', async () => {
+  const { host, guest } = await table(sealedRed, sealedBlue);
+  assert.equal(sealedFlag(host.sim().board, 'red'), 90);
+  assert.equal(sealedFlag(host.sim().board, 'blue'), null);          // blue's flag is unknown to red until revealed
+  await tradeMiners(host, guest);
+  assert.equal(host.view().lastCombat?.result, 'both');
+  assert.equal(minersLeft(host.sim(), 'red'), 0); assert.equal(minersLeft(host.sim(), 'blue'), 0);
+  // Blue's turn: its client proved its sealed flag (no turn spent) and still has to move; red then proves its own.
+  assert.equal(guest.view().turn, 'blue'); assert.equal(guest.view().phase, 'play');
+  assert.ok(guest.round.log.at(-1)?.type === 'dead');
+  const [from, to] = anyMove(guest);                                   // any ordinary move; red's client then claims and the draw is sealed
+  guest.move(from, to); await sync(host, guest);
+  for (const g of [host, guest]) {
+    assert.equal(g.view().phase, 'over'); assert.equal(g.view().outcome, 'draw'); assert.equal(g.view().reason, 'dead'); assert.equal(g.view().winner, null);
+    assert.equal(g.view().board[0]!.rank, 'F'); assert.equal(g.view().board[90]!.rank, 'F');   // both flags now revealed
+  }
+  assert.throws(() => guest.move(to, from), GameError);
+  guest.playAgain(); host.playAgain(); await sync(host, guest);
+  assert.equal(host.view().round, 2);
+});
+
+test('a dead-position claim is refused while an enemy Miner survives or the flag has an open side', async () => {
+  const { host, guest } = await table(sealedRed, { ...sealedBlue, 10: '6' });   // blue's flag has a Captain beside it, not a bomb
+  const forge = (game: Game, ids: string[]) => {
+    const round: Round = JSON.parse(JSON.stringify(game.round));
+    const priv = game.private[0]!;
+    round.log.push({ type: 'dead', by: game.color, reveals: Object.fromEntries(ids.map(id => [id, { rank: priv.ranks[id]!, salt: priv.salts[id]! }])) });
+    return round;
+  };
+  const redIds = (squares: number[]) => host.round.setups.red!.filter(e => squares.includes(e.square)).map(e => e.id);
+  assert.throws(() => simulate(forge(host, redIds([90, 80, 91])), { red: host.private[0]!.ranks }), /every enemy Miner captured/);
+  await tradeMiners(host, guest);
+  const blueIds = (squares: number[]) => guest.round.setups.blue!.filter(e => squares.includes(e.square)).map(e => e.id);
+  assert.throws(() => simulate(forge(guest, blueIds([0, 1, 10])), { blue: guest.private[0]!.ranks }), /not sealed/);
+  assert.ok(!guest.round.log.some(e => e.type === 'dead'));           // no automatic claim for blue: its flag is not sealed
+  assert.equal(guest.view().phase, 'play');
+  const [from, to] = anyMove(guest); guest.move(from, to); await sync(host, guest);
+  assert.equal(host.round.log.at(-1)?.type, 'dead');                  // red's flag is sealed, so red claims on its turn…
+  assert.equal(host.view().phase, 'play');                            // …but one claim alone does not end the game
 });
