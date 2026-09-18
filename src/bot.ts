@@ -191,7 +191,7 @@ const IS_MOVABLE = RANKS.map(r => PIECE_BY_RANK[r].movable);
 const OUTCOME = new Int8Array(N * N);
 for (const a of RANKS) for (const d of RANKS) if (PIECE_BY_RANK[a].movable) OUTCOME[R[a] * N + R[d]] = ['attacker', 'defender', 'both', 'flag'].indexOf(resolveCombat(a, d));
 /** Material value by rank index, before the adjustments in `values`. */
-const BASE = RANKS.map(r => ({ '10': 550, '9': 400, '8': 250, '7': 150, '6': 95, '5': 60, '4': 45, '3': 70, '2': 25, 'S': 45, 'B': 40, 'F': 0 })[r]);
+const BASE = RANKS.map(r => ({ '10': 550, '9': 400, '8': 250, '7': 150, '6': 95, '5': 60, '4': 45, '3': 80, '2': 25, 'S': 45, 'B': 40, 'F': 0 })[r]);
 const DIST = new Int8Array(10000);
 for (let a = 0; a < 100; a++) for (let b = 0; b < 100; b++) DIST[a * 100 + b] = distance(a, b);
 /** Squares two and three steps away from each square (lakes excluded): where a piece can be chased from, or run to. */
@@ -205,9 +205,10 @@ const RAYS: number[][][] = Array.from({ length: 100 }, (_, sq) => [[-1, 0], [1, 
   return ray;
 }));
 const WIN = 100000;
-/** Wins and losses count as this much material at the root: a suspected flag is worth probing with a Sergeant, but the Marshal and the General only strike when it is nearly certain. */
+/** A win or loss found by the search counts as this much material on top of the position: worth a lot, but a guess about a sampled flag never outweighs the whole army. */
 const CAP = 600;
-const capFor = (attacker: number, dist: Distribution) => (BASE[attacker]! >= 150 && dist.F < dist.B ? 0 : attacker === MARSHAL || attacker === GENERAL ? 300 : CAP);
+/** What taking the flag is worth at the root, where the odds are exact: a suspected flag is worth a Scout at long odds, an officer only when the flag is likelier than a bomb, and the Marshal or General only when it is nearly certain. */
+const capFor = (attacker: number, dist: Distribution) => (BASE[attacker]! >= 150 && dist.F < dist.B ? 0 : attacker === MARSHAL || attacker === GENERAL ? 300 : 1200);
 
 interface Cell { owner: Color; rank: number; moved: boolean; revealed: boolean; id: string }
 interface Board { cells: (Cell | null)[]; recent: Record<Color, Recent[]>; winner: Color | null; flags: Record<Color, number> }
@@ -267,7 +268,7 @@ function values(mine: Int32Array, theirs: Int32Array, out: Float64Array) {
   let theirTop = 0;
   for (let r = 0; r < N; r++) { out[r] = BASE[r]!; if (IS_MOVABLE[r] && r !== SPY && theirs[r]! > 0) theirTop = Math.max(theirTop, VALUE[r]!); }
   if (theirs[MARSHAL]! > 0) out[SPY] = out[SPY]! + 170;                                   // the only answer to their Marshal
-  if (theirs[BOMB]! > 0) out[MINER] = out[MINER]! + 50 + Math.max(0, 5 - mine[MINER]!) ** 2 * 12;   // the only way through their bombs: precious, and more so as they run out
+  if (theirs[BOMB]! > 0) out[MINER] = out[MINER]! + 70 + Math.max(0, 5 - mine[MINER]!) ** 2 * 20;   // the only way through their bombs, so without them the game cannot be won: precious, and the last ones nearly priceless
   if (theirs[SPY] === 0) out[MARSHAL] = out[MARSHAL]! + 60;                                    // nothing movable can touch it any more
   for (let r = 0; r < N; r++) if (IS_MOVABLE[r] && r !== SPY) { if (VALUE[r]! > theirTop) out[r] = out[r]! + 60; else if (VALUE[r] === theirTop) out[r] = out[r]! + 20; }
 }
@@ -280,8 +281,16 @@ function sealed(b: Board, c: Color) {
 function evaluate(b: Board, side: Color): number {
   const cells = b.cells;
   CNT.red.fill(0); CNT.blue.fill(0);
-  for (let sq = 0; sq < 100; sq++) { const p = cells[sq]; if (p) CNT[p.owner][p.rank] = CNT[p.owner][p.rank]! + 1; }
+  const marshal = { red: -1, blue: -1 }, general = { red: -1, blue: -1 };
+  for (let sq = 0; sq < 100; sq++) {
+    const p = cells[sq];
+    if (!p) continue;
+    CNT[p.owner][p.rank] = CNT[p.owner][p.rank]! + 1;
+    if (p.rank === MARSHAL) marshal[p.owner] = sq; else if (p.rank === GENERAL) general[p.owner] = sq;
+  }
   values(CNT.red, CNT.blue, VAL.red); values(CNT.blue, CNT.red, VAL.blue);
+  let moversRed = 0, moversBlue = 0;
+  for (let r = 0; r < N; r++) if (IS_MOVABLE[r]) { moversRed += CNT.red[r]!; moversBlue += CNT.blue[r]!; }
   const sealedRed = sealed(b, 'red'), sealedBlue = sealed(b, 'blue');
   let huntRed = 99, huntBlue = 99;      // nearest useful red hunter to the blue flag, and the reverse
   let threatRed = 0, threatBlue = 0;    // the best capture each side has waiting
@@ -289,11 +298,21 @@ function evaluate(b: Board, side: Color): number {
   for (let sq = 0; sq < 100; sq++) {
     const p = cells[sq];
     if (!p) continue;
-    const r = p.rank, red = p.owner === 'red';
+    const r = p.rank, red = p.owner === 'red', enemy = red ? 'blue' : 'red';
     let v = (red ? VAL.red : VAL.blue)[r]!;
     if (IS_MOVABLE[r]) {
-      v += ADVANCE[p.owner][sq]!;
-      if (!p.revealed) v += r === MARSHAL || r === GENERAL ? 15 : r === SPY ? 20 : 4;
+      const enemyMovers = red ? moversBlue : moversRed, theirMarshal = marshal[enemy];
+      // Miners stay home while the enemy army is still out in force; every piece that has never moved keeps the enemy guessing where the bombs are.
+      if (r !== MINER || enemyMovers <= 6) v += ADVANCE[p.owner][sq]!;
+      if (!p.moved) v += 3;
+      if (!p.revealed) v += r === MARSHAL || r === GENERAL ? 15 : r === SPY ? (theirMarshal >= 0 ? 40 : 5) : 4;
+      if (r === SPY && theirMarshal >= 0) {
+        // The Spy guards the General (a Marshal that takes the General dies next move) and stalks a revealed Marshal from two squares away,
+        // where the Marshal cannot strike first but one careless step brings it within reach.
+        const own = general[p.owner];
+        if (own >= 0) { const d = DIST[sq * 100 + own]!; if (d === 1) v += 20; else if (d === 2) v += 8; }
+        if (cells[theirMarshal]!.revealed) { const d = DIST[sq * 100 + theirMarshal]!; if (d === 2) v += 35; else if (d === 3) v += 15; }
+      }
       const enemyVals = red ? VAL.blue : VAL.red, ns = NEIGHBOURS[sq]!;
       for (let i = 0; i < ns.length; i++) {
         const t = cells[ns[i]!];
@@ -303,27 +322,26 @@ function evaluate(b: Board, side: Color): number {
         const gain = o === 3 ? (r === MARSHAL || r === GENERAL ? 600 : 2000) : o === 0 ? enemyVals[t.rank]! : 0;
         if (red) { if (gain > threatRed) threatRed = gain; } else if (gain > threatBlue) threatBlue = gain;
       }
-      // Two or three squares away: close in on enemies this piece beats, keep away from enemies that beat it (mostly when they know what it is).
+      // Two or three squares away: close in on enemies this piece beats (intruders deep in our half above all), keep away from enemies that beat it —
+      // mostly when they know what it is, except Miners, which run from everything: without them the game cannot be won.
       const near = NEAR[sq]!;
       for (let d = 0; d < 2; d++) {
         const ring = near[d]!, w = d === 0 ? 0.1 : 0.05;
         for (let i = 0; i < ring.length; i++) {
           const t = cells[ring[i]!];
           if (!t || t.owner === p.owner || !IS_MOVABLE[t.rank]) continue;
-          if (OUTCOME[r * N + t.rank] === 0) v += enemyVals[t.rank]! * w;
-          if (OUTCOME[t.rank * N + r] === 0) v -= v * w * (p.revealed ? 1 : 0.4);
+          if (OUTCOME[r * N + t.rank] === 0) v += enemyVals[t.rank]! * w * (ADVANCE[t.owner][ring[i]!]! >= 6 ? 2.5 : 1);
+          if (OUTCOME[t.rank * N + r] === 0) v -= v * (r === MINER ? 2 * w : w * (p.revealed ? 1 : 0.4));
         }
       }
       const flag = red ? b.flags.blue : b.flags.red;
-      if (flag >= 0 && ((red ? sealedBlue : sealedRed) ? r === MINER : r !== SPY)) {
+      if (flag >= 0 && ((red ? sealedBlue : sealedRed) ? r === MINER && enemyMovers <= 12 : r !== SPY)) {
         const d = DIST[sq * 100 + flag]!;
         if (red) { if (d < huntRed) huntRed = d; } else if (d < huntBlue) huntBlue = d;
       }
     }
     score += red ? v : -v;
   }
-  let moversRed = 0, moversBlue = 0;
-  for (let r = 0; r < N; r++) if (IS_MOVABLE[r]) { moversRed += CNT.red[r]!; moversBlue += CNT.blue[r]!; }
   const pull = (hunt: number, movers: number) => (hunt === 99 ? 0 : Math.max(0, 30 - 3 * hunt) * (movers <= 6 ? 3 : movers <= 12 ? 2 : 1));   // the fewer defenders, the more the flag pulls
   score += pull(huntRed, moversBlue) - pull(huntBlue, moversRed);
   score += side === 'red' ? 0.5 * threatRed - 0.3 * threatBlue : 0.3 * threatRed - 0.5 * threatBlue;
@@ -422,14 +440,15 @@ export function chooseMove(input: BotInput): Move | null {
   const belief = beliefs(round, sim, me);
   const hidden = hiddenCounts(sim, them);
   const boards = Array.from({ length: samples }, () => sample(sim, belief, hidden));
+  const baselines = boards.map(b => evaluate(b, me));
   deadline = started + timeMs;
 
-  /** The value of a root move in one sample, seen `depth` plies deep, clamped so a win is worth a lot of material but not everything. */
-  const after = (b: Board, move: number, depth: number) => {
+  /** The value of a root move in one sample, seen `depth` plies deep; a win or loss found on the way counts as CAP on top of the position as it stands. */
+  const after = (b: Board, k: number, move: number, depth: number) => {
     const undo = make(b, move, me);
     const v = b.winner ? WIN : depth <= 1 ? -evaluate(b, them) : -negamax(b, them, depth - 1, -Infinity, Infinity, 1);
     unmake(b, undo, me);
-    return Math.max(-CAP, Math.min(CAP, v));
+    return v > WIN / 2 ? baselines[k]! + CAP : v < -WIN / 2 ? baselines[k]! - CAP : v;
   };
   /** Gives the unknown piece on `sq` the rank `rank` in this sample, swapping with a piece that holds it so the army stays consistent. Returns the undo. */
   const force = (b: Board, sq: number, rank: Rank): (() => void) => {
@@ -442,23 +461,32 @@ export function chooseMove(input: BotInput): Move | null {
     return () => { piece.rank = was; if (partner) partner.rank = index; };
   };
   type Root = { move: Move; code: number; value: number; unknown: number | null };
-  const roots: Root[] = legal.map(move => ({ move, code: move.from * 100 + move.to, value: 0, unknown: sim.board[move.to] && !sim.board[move.to]!.rank ? move.to : null }));
+  // Attacking a revealed piece that beats the attacker is suicide, whatever the search makes of the position.
+  const suicide = (move: Move) => {
+    const piece = sim.board[move.from]!, t = sim.board[move.to];
+    if (!t) return false;
+    if (t.rank) return resolveCombat(piece.rank!, t.rank) === 'defender';
+    return piece.rank === '3' && t.moved;   // a Miner gambling on an unknown mover can only hope for a Scout or the Spy; it is the win condition, not a probe
+  };
+  const sensible = legal.filter(move => !suicide(move));
+  const roots: Root[] = (sensible.length ? sensible : legal).map(move => ({ move, code: move.from * 100 + move.to, value: 0, unknown: sim.board[move.to] && !sim.board[move.to]!.rank ? move.to : null }));
   /** Average over the samples; an attack on an unknown piece is averaged exactly over every rank it could be. */
   const valueAt = (root: Root, depth: number) => {
     let total = 0;
-    for (const b of boards) {
-      if (root.unknown === null) { total += after(b, root.code, depth); continue; }
+    for (let k = 0; k < boards.length; k++) {
+      const b = boards[k]!;
+      if (root.unknown === null) { total += after(b, k, root.code, depth); continue; }
       const dist = belief.get(root.unknown)!;
       let expected = 0, mass = 0;
       for (const rank of RANKS) {
         const p = dist[rank];
         if (p < 0.01) continue;
-        if (rank === 'F') { expected += p * capFor(b.cells[root.move.from]!.rank, dist); mass += p; continue; }
+        if (rank === 'F') { expected += p * (baselines[k]! + capFor(b.cells[root.move.from]!.rank, dist)); mass += p; continue; }
         const restore = force(b, root.unknown, rank);
-        expected += p * after(b, root.code, depth); mass += p;
+        expected += p * after(b, k, root.code, depth); mass += p;
         restore();
       }
-      total += mass > 0 ? expected / mass : after(b, root.code, depth);
+      total += mass > 0 ? expected / mass : after(b, k, root.code, depth);
     }
     return total / boards.length;
   };
@@ -477,8 +505,14 @@ export function chooseMove(input: BotInput): Move | null {
   }
   stats.depth = reached; stats.nodes = nodes; stats.ms = now() - started; stats.moves = legal.length;
 
-  // Root-only adjustments the search cannot see: the information an attack buys, a cheaper piece that could probe instead, and a dislike of wandering back and forth.
-  const prober = sim.board.some(p => p?.owner === me && (p.rank === '2' || p.rank === '3' || p.rank === '4' || p.rank === '5'));
+  // Root-only adjustments the search cannot see: the information an attack buys, a cheaper piece that could probe instead, a dislike of wandering back and forth,
+  // and piece discipline: every piece that moves for the first time tells the enemy it is not a bomb, so a few pieces do the work while the rest keep the secret.
+  const prober = sim.board.some(p => p?.owner === me && (p.rank === '2' || p.rank === '4' || p.rank === '5'));
+  const inPlay = sim.board.filter(p => p?.owner === me && p.moved).length;
+  const backRows = (sq: number) => (me === 'red' ? sq >= 80 : sq < 20);
+  /** A piece that may have to run, whatever it gives away by moving: an enemy beside it, a known stronger enemy two squares away, or — for a Miner — any enemy that close. */
+  const pressed = (sq: number, rank: Rank) => NEIGHBOURS[sq]!.some(n => sim.board[n]?.owner === them)
+    || NEAR[sq]![0]!.some(n => { const t = sim.board[n]; return t?.owner === them && (rank === '3' || (!!t.rank && resolveCombat(t.rank, rank) === 'attacker')); });
   let best: Root | null = null, bestScore = -Infinity;
   const traced: { move: Move; value: number; score: number }[] = [];
   for (const root of candidates) {
@@ -489,7 +523,10 @@ export function chooseMove(input: BotInput): Move | null {
       const certainty = Math.max(...RANKS.map(r => dist[r]));
       score += (1 - certainty) * (piece.rank === '2' ? (target.moved ? 14 : 5) : 6);
       if (!target.moved && prober && BASE[R[piece.rank!]]! >= 150) score -= dist.B * BASE[R[piece.rank!]]!;   // a Scout or Miner should be the one to find out
-    } else if (!sim.board[root.move.to]) score -= 6 * recentlyLeft(round, me, root.move.to);
+    } else if (!sim.board[root.move.to]) {
+      score -= 6 * recentlyLeft(round, me, root.move.to);
+      if (!piece.moved && !pressed(root.move.from, piece.rank!)) score -= 12 + 3 * inPlay + (backRows(root.move.from) ? 15 : 0);
+    }
     if (score > bestScore) { bestScore = score; best = root; }
     traced.push({ move: root.move, value: root.value, score });
   }
