@@ -1,6 +1,7 @@
 import './style.css';
 import { registerSW } from 'virtual:pwa-register';
 import { Game, GameError, LAKES, colOf, other, randomSetup, rowOf, type Color, type Combat, type Round, type Saved, type View } from './game.ts';
+import { chooseMove, chooseSetup, type BotInput, type Move } from './bot.ts';
 import { PIECES, PIECE_BY_RANK, type Rank } from './pieces.ts';
 import { arrow, crest, e, ordinal, token } from './tokens.ts';
 import { guide } from './guide.ts';
@@ -10,8 +11,8 @@ registerSW({ immediate: true });
 
 const APP = 'stratego';
 type Draft = { round: number; color: Color; placement: Record<number, Rank> };
-/** Everything this seat needs to resume: the game (with this player's ranks and salts), the setup being edited, and who sits across. */
-interface SeatState { game?: Saved; draft?: Draft; remoteName?: string; remoteToken?: string; members?: Pick<Member, 'token' | 'name' | 'role'>[]; transport?: 'local' }
+/** Everything this seat needs to resume: the game (with this player's ranks and salts), the setup being edited, and who sits across. A game against the computer also keeps the computer's own seat. */
+interface SeatState { game?: Saved; draft?: Draft; remoteName?: string; remoteToken?: string; members?: Pick<Member, 'token' | 'name' | 'role'>[]; transport?: 'local'; opponent?: 'computer'; bot?: Saved }
 type StoredSession = { seat: Seat; state: SeatState };
 
 const root = document.querySelector<HTMLElement>('#app')!;
@@ -20,9 +21,11 @@ const linkParams = new URLSearchParams(location.hash.slice(1));
 const store = new SeatStore<SeatState>(`${APP}-seat-v2` + (import.meta.env.DEV && linkParams.get('seat') ? ':' + linkParams.get('seat') : ''));
 const linkRoom = roomFromHash();
 let session: StoredSession | null = null, game: Game | null = null, network: Room | null = null;
+/** The computer's own engine, holding its own ranks and salts: it sees exactly what a remote opponent would. */
+let bot: Game | null = null, worker: Worker | null = null, botRunning = false, botPending = false, converging = false;
 const localTransport = import.meta.env.DEV && linkParams.get('transport') === 'local';
 let state: StatusKind | 'home' = 'home', status = '', path: Path = 'none', message = '', fatal = '', busy = false;
-let joining = !!linkRoom;
+let mode: 'create' | 'join' | 'computer' = linkRoom ? 'join' : 'create';
 let draftName = '', draftCode = linkRoom;
 let selected: number | null = null, rulesOpen = false, leaveOpen = false, lastSent = '', storageWarning = '';
 let resume: StoredSession | null = (() => { const saved = store.load(); return saved && saved.seat.app === APP ? { seat: saved.seat, state: saved.state } : null; })();
@@ -33,10 +36,12 @@ const squareName = (sq: number) => `${FILES[colOf(sq)]}${10 - rowOf(sq)}`;
 function persist() {
   if (!session) return;
   if (game) session.state.game = game.saved();
+  if (bot) session.state.bot = bot.saved();
   if (!store.save(session.seat, session.state)) storageWarning = 'This browser can’t save your game. Keep this tab open; refreshing or closing it will lose your place.';
 }
 function sync(force = false) {
   if (!game) return;
+  if (bot) { if (!converging) scheduleBot(); return; }   // changes made while the two engines converge are the bot's own doing
   const rounds = game.snapshot().rounds, text = JSON.stringify(rounds);
   if (force || text !== lastSent) { network?.send(rounds); lastSent = text; }
 }
@@ -102,6 +107,83 @@ async function start(role: 'host' | 'guest', existing: StoredSession | null = nu
   busy = false; render();
 }
 
+// ---------- The computer opponent ----------
+const COMPUTER = 'Computer';
+const BOT_OPTIONS = { timeMs: 500, samples: 16, maxDepth: 3 };
+/** The computer never answers faster than this, so its moves read as considered rather than instant. */
+const MIN_THINK = 450;
+const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+const canon = (value: unknown): string => JSON.stringify(value, (_, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v as object).sort().map(k => [k, (v as Record<string, unknown>)[k]])) : v));
+const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+async function startComputer(existing: StoredSession | null = null) {
+  if (busy) return;
+  if (!crypto.subtle) { message = 'Use a current browser on HTTPS (or localhost) to play.'; render(); return; }
+  busy = true; message = ''; render();
+  try {
+    const opened = existing ?? { seat: await createSeat(APP, 'host', draftName), state: { opponent: 'computer' as const } };
+    game = new Game(opened.seat.code, opened.state.game, onGameChange, 'host');
+    bot = new Game(opened.seat.code, opened.state.bot, () => {}, 'guest');
+    try { game.view(); bot.view(); } catch {
+      game = new Game(opened.seat.code, null, onGameChange, 'host'); bot = new Game(opened.seat.code, null, () => {}, 'guest'); delete opened.state.draft; message = 'The saved match could not be read, so this starts a new round.';
+    }
+    session = opened;
+    session.state.remoteName = COMPUTER; session.state.remoteToken = 'computer';
+    state = 'connected'; status = 'Playing against the computer on this device.'; path = 'none'; selected = null; lastSent = '';
+    persist();
+    window.history.replaceState(null, '', '#opponent=computer');
+    scheduleBot();
+  } catch (err) { message = err instanceof Error ? err.message : 'Couldn’t start the game. Please try again.'; session = null; game = null; bot = null; state = 'home'; }
+  busy = false; render();
+}
+/** Both engines end up with the same transcript, exactly as two peers would; the automatic answers (defend, stuck, dead) fire inside receive. */
+async function converge() {
+  converging = true;
+  try {
+    for (let i = 0; i < 8 && game && bot; i++) {
+      await bot.receive(clone(game.snapshot().rounds));
+      await game.receive(clone(bot.snapshot().rounds));
+      if (canon(game.snapshot()) === canon(bot.snapshot())) return;
+    }
+  } finally { converging = false; }
+}
+/** Runs the search in a worker so the page stays responsive; falls back to the main thread when workers are unavailable. */
+function think(input: BotInput): Promise<Move | null> {
+  if (typeof Worker === 'undefined') return Promise.resolve(chooseMove(input));
+  return new Promise<Move | null>((resolve, reject) => {
+    worker ??= new Worker(new URL('./bot.worker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = (event: MessageEvent<Move | null>) => resolve(event.data);
+    worker.onerror = () => { worker?.terminate(); worker = null; reject(new Error('worker')); };
+    worker.postMessage(input);
+  }).catch(() => chooseMove(input));
+}
+function scheduleBot() { if (botRunning) botPending = true; else void runBot(); }
+async function runBot() {
+  if (!game || !bot) return;
+  botRunning = true;
+  try {
+    for (let step = 0; step < 6 && game && bot; step++) {
+      botPending = false;
+      await wait(0);   // let the page paint between steps
+      await converge();
+      if (!game || !bot || game.error || bot.error) break;
+      const v = bot.view();
+      if (v.phase === 'setup' && !v.mySetupDone) { await bot.commitSetup(chooseSetup(bot.color)); continue; }
+      if (v.phase === 'play' && v.myTurn) {
+        const started = performance.now();
+        const move = await think({ round: clone(bot.round), sim: bot.sim(), me: bot.color, options: BOT_OPTIONS });
+        await wait(MIN_THINK - (performance.now() - started));
+        if (!bot || !game) break;
+        if (move) bot.move(move.from, move.to);   // no move at all: receive() has already declared the loss
+        continue;
+      }
+      if (v.phase === 'over' && v.theirAgain && !v.myAgain && v.round < 100) { bot.playAgain(); continue; }
+      break;
+    }
+  } catch (err) { fatal = err instanceof Error ? err.message : 'The computer stopped playing.'; }
+  finally { botRunning = false; persist(); render(); if (botPending) scheduleBot(); }
+}
+
 const roomHash = (s: StoredSession) => buildRoomHash(s.seat.code, { ...(s.state.transport === 'local' ? { transport: 'local' } : {}), ...(import.meta.env.DEV && linkParams.get('seat') ? { seat: linkParams.get('seat')! } : {}) });
 function inviteURL() { const url = new URL(location.href); url.hash = roomHash(session!); return url.href; }
 async function copyInvite(share: boolean) {
@@ -114,11 +196,14 @@ async function copyInvite(share: boolean) {
 // ---------- Lobby ----------
 function home() {
   const sample = [['10', 'red'], [null, 'blue'], ['3', 'red'], ['B', 'blue'], [null, 'blue'], ['2', 'red'], ['F', 'red'], [null, 'blue'], ['S', 'red']] as const;
-  return `<div class="lobby-grid"><section class="start-panel"><div class="eyebrow"><span class="tiny-line"></span>A BATTLE OF WITS FOR TWO</div><h1>Hide the flag.<br><span>Read their army.</span></h1><p class="intro">Classic Stratego, browser to browser. Send a room code to a friend anywhere in the world and play on the same board — no account, no server, no downloads.</p>
+  const tab = (id: typeof mode, label: string) => `<button id="${id}-tab" role="tab" aria-selected="${mode === id}" tabindex="${mode === id ? 0 : -1}" data-action="${id}-tab">${label}</button>`;
+  const submit = busy ? (mode === 'computer' ? 'Starting…' : 'Connecting…') : mode === 'join' ? 'Join the battle' : mode === 'computer' ? 'Start the battle' : 'Open a war room';
+  const note = mode === 'join' ? 'Paste the code or open the link your friend sent you.' : mode === 'computer' ? 'A single-player game on this device. The computer plays a strong, patient game — and never peeks.' : 'You get a room code and a link to share with one friend.';
+  return `<div class="lobby-grid"><section class="start-panel"><div class="eyebrow"><span class="tiny-line"></span>A BATTLE OF WITS FOR TWO</div><h1>Hide the flag.<br><span>Read their army.</span></h1><p class="intro">Classic Stratego, browser to browser. Send a room code to a friend anywhere in the world and play on the same board — no account, no server, no downloads. Or take on the computer, right here.</p>
     <div class="play-box">
-      ${resume ? `<div class="resume"><div><strong>Your war room is still open</strong><p>${e(resume.seat.code)} · ${e(resume.seat.name)}</p></div><button class="button small" data-action="resume">Resume ${arrow}</button></div>` : ''}
-      <div class="tabs" role="tablist" aria-label="Choose how to play"><button id="create-tab" role="tab" aria-selected="${!joining}" tabindex="${joining ? -1 : 0}" data-action="create-tab">Create a room</button><button id="join-tab" role="tab" aria-selected="${joining}" tabindex="${joining ? 0 : -1}" data-action="join-tab">Join a friend</button></div>
-      <form id="play-form"><label for="player-name">Your name <span>optional</span></label><input id="player-name" name="name" autocomplete="nickname" maxlength="20" placeholder="General…" value="${e(draftName)}" />${joining ? `<label for="room-code">Room code</label><input id="room-code" class="code-input" name="room" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="12" placeholder="ABCD EFGH" value="${e(draftCode)}" required />` : ''}<button class="button primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Connecting…' : joining ? 'Join the battle' : 'Open a war room'} ${arrow}</button><p class="form-note">${joining ? 'Paste the code or open the link your friend sent you.' : 'You get a room code and a link to share with one friend.'}</p><div class="message ${message ? '' : 'empty'}" role="alert">${e(message)}</div></form>
+      ${resume ? `<div class="resume"><div><strong>${resume.state.opponent === 'computer' ? 'Your game against the computer is still open' : 'Your war room is still open'}</strong><p>${resume.state.opponent === 'computer' ? 'Round in progress' : e(resume.seat.code)} · ${e(resume.seat.name)}</p></div><button class="button small" data-action="resume">Resume ${arrow}</button></div>` : ''}
+      <div class="tabs" role="tablist" aria-label="Choose how to play">${tab('create', 'Create a room')}${tab('join', 'Join a friend')}${tab('computer', 'Play the computer')}</div>
+      <form id="play-form"><label for="player-name">Your name <span>optional</span></label><input id="player-name" name="name" autocomplete="nickname" maxlength="20" placeholder="General…" value="${e(draftName)}" />${mode === 'join' ? `<label for="room-code">Room code</label><input id="room-code" class="code-input" name="room" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="12" placeholder="ABCD EFGH" value="${e(draftCode)}" required />` : ''}<button class="button primary" type="submit" ${busy ? 'disabled' : ''}>${submit} ${arrow}</button><p class="form-note">${note}</p><div class="message ${message ? '' : 'empty'}" role="alert">${e(message)}</div></form>
     </div><div class="lobby-meta"><span>Encrypted P2P</span><span>Verified reveals</span><span>No account</span></div></section>
   <aside class="intro-aside"><div class="sample-board"><div class="board-top"><span class="eyebrow">TWO ARMIES · ONE FLAG</span><span class="player-tag">40</span></div><div class="sample-grid">${sample.map(([rank, color]) => `<span class="sample-cell">${token(rank, color)}</span>`).join('')}</div><div class="sample-divider"></div><div class="sample-legend"><div>${token('10', 'red', { size: 'sm' })}<span>Your pieces show their rank</span></div><div>${token(null, 'blue', { size: 'sm' })}<span>Enemy ranks stay hidden until they fight</span></div></div></div><div class="quick-rules"><span class="eyebrow">HOW IT WORKS</span><h2>Every reveal is<br>cryptographically checked.</h2><p>Each army is committed with salted hashes before the first move. When a piece fights, its owner proves the rank against that commitment, so neither browser has to trust the other.</p><a class="text-button" href="#how-to-play" data-action="rules">How to play <span>↓</span></a></div></aside></div>
   <section id="how-to-play" class="how-to-play"><div class="section-heading"><h2>How to play</h2><span>Classic rules · 10 × 10 board</span></div>${guide()}</section>`;
@@ -204,12 +289,13 @@ function aside(v: View) {
 
 function room() {
   const v = game!.view();
-  const top = `<div class="room-heading"><div><span class="eyebrow">ROOM</span><button class="room-pill" data-action="copy">${e(session!.seat.code.slice(0, 4))} ${e(session!.seat.code.slice(4))}<span>↗</span></button></div><button class="text-button muted" data-action="leave">Leave room</button></div><div class="connection-banner ${state === 'connected' ? 'connected' : state === 'waiting' && path === 'relay' && session!.state.remoteToken ? 'stored' : ''}" role="status"><span class="connection-dot"></span><span>${e(status)}</span>${path !== 'none' ? `<span class="path-badge">${path === 'direct' ? 'P2P' : 'Relay'}</span>` : ''}</div>${storageWarning ? `<div class="message">${e(storageWarning)}</div>` : ''}`;
+  const pill = bot ? `<span class="eyebrow">OPPONENT</span><span class="room-pill">${COMPUTER}</span>` : `<span class="eyebrow">ROOM</span><button class="room-pill" data-action="copy">${e(session!.seat.code.slice(0, 4))} ${e(session!.seat.code.slice(4))}<span>↗</span></button>`;
+  const top = `<div class="room-heading"><div>${pill}</div><button class="text-button muted" data-action="leave">${bot ? 'Leave game' : 'Leave room'}</button></div><div class="connection-banner ${state === 'connected' ? 'connected' : state === 'waiting' && path === 'relay' && session!.state.remoteToken ? 'stored' : ''}" role="status"><span class="connection-dot"></span><span>${e(status)}</span>${path !== 'none' ? `<span class="path-badge">${path === 'direct' ? 'P2P' : 'Relay'}</span>` : ''}</div>${storageWarning ? `<div class="message">${e(storageWarning)}</div>` : ''}`;
   return `${top}<div class="game-grid">${boardHTML(v)}<aside class="game-aside">${aside(v)}</aside>${v.phase !== 'setup' ? tracker(v) : ''}</div>`;
 }
 
 function dialogs() {
-  return `<dialog id="rules-dialog" aria-labelledby="rules-title"><div class="dialog-top"><span class="eyebrow">THE FIELD MANUAL</span><button class="icon-button" data-action="close-rules" aria-label="Close rules">×</button></div><h2 id="rules-title">How to play Stratego</h2>${guide()}<button class="button primary" data-action="close-rules">Back to the field ${arrow}</button></dialog><dialog id="leave-dialog" aria-labelledby="leave-title"><h2 id="leave-title">Leave this room?</h2><p>Your seat, your army and the saved match will be cleared on this device.</p><div class="dialog-actions"><button class="button secondary" data-action="cancel-leave">Keep playing</button><button class="button primary" data-action="confirm-leave">Leave room</button></div></dialog>`;
+  return `<dialog id="rules-dialog" aria-labelledby="rules-title"><div class="dialog-top"><span class="eyebrow">THE FIELD MANUAL</span><button class="icon-button" data-action="close-rules" aria-label="Close rules">×</button></div><h2 id="rules-title">How to play Stratego</h2>${guide()}<button class="button primary" data-action="close-rules">Back to the field ${arrow}</button></dialog><dialog id="leave-dialog" aria-labelledby="leave-title"><h2 id="leave-title">${bot ? 'Leave this game?' : 'Leave this room?'}</h2><p>${bot ? 'The match against the computer will be cleared on this device.' : 'Your seat, your army and the saved match will be cleared on this device.'}</p><div class="dialog-actions"><button class="button secondary" data-action="cancel-leave">Keep playing</button><button class="button primary" data-action="confirm-leave">${bot ? 'Leave game' : 'Leave room'}</button></div></dialog>`;
 }
 
 function render() {
@@ -219,8 +305,8 @@ function render() {
 }
 
 function leaveRoom() {
-  network?.close();
-  session = null; game = null; network = null; resume = null;
+  network?.close(); worker?.terminate();
+  session = null; game = null; network = null; bot = null; worker = null; botPending = false; resume = null;
   state = 'home'; status = ''; path = 'none'; message = ''; fatal = ''; leaveOpen = false; selected = null; lastSent = '';
   store.clear();
   window.history.replaceState(null, '', location.pathname + location.search); render();
@@ -264,7 +350,7 @@ root.addEventListener('input', event => {
 });
 root.addEventListener('submit', async event => {
   event.preventDefault();
-  if ((event.target as HTMLFormElement).id === 'play-form') await start(joining ? 'guest' : 'host');
+  if ((event.target as HTMLFormElement).id === 'play-form') await (mode === 'computer' ? startComputer() : start(mode === 'join' ? 'guest' : 'host'));
 });
 root.addEventListener('click', async event => {
   const cell = (event.target as HTMLElement).closest<HTMLElement>('[data-square]');
@@ -273,9 +359,8 @@ root.addEventListener('click', async event => {
   const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action]');
   if (!button) return;
   const action = button.dataset.action;
-  if (action === 'create-tab') { joining = false; render(); }
-  else if (action === 'join-tab') { joining = true; render(); }
-  else if (action === 'resume' && resume) await start(resume.seat.role, resume);
+  if (action === 'create-tab' || action === 'join-tab' || action === 'computer-tab') { mode = action.slice(0, -4) as typeof mode; render(); }
+  else if (action === 'resume' && resume) await (resume.state.opponent === 'computer' ? startComputer(resume) : start(resume.seat.role, resume));
   else if (action === 'rules') { if (session) { event.preventDefault(); rulesOpen = true; render(); } }
   else if (action === 'close-rules') { rulesOpen = false; closeDialog('#rules-dialog'); }
   else if (action === 'copy') await copyInvite(false);
@@ -332,3 +417,4 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 render();
 // Opening the room's own link (a reload, a killed tab, a phone coming back) rejoins the saved seat straight away.
 if (resume && linkRoom && linkRoom === resume.seat.code) void start(resume.seat.role, resume);
+else if (resume?.state.opponent === 'computer' && linkParams.get('opponent') === 'computer') void startComputer(resume);
