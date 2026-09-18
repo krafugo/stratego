@@ -64,8 +64,8 @@ label > span { font-weight: 400; color: var(--muted); margin-left: 4px; }
 .start-panel > .eyebrow { display: flex; align-items: center; gap: 8px; margin: 5px 0 22px; }
 .intro { font-size: 1.05rem; margin: 22px 0 26px; max-width: 520px; }
 .play-box { border: 1px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: 0 5px 0 #e6dcc6; overflow: hidden; }
-.tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); padding: 6px 8px 0; gap: 8px; }
-.tabs button { padding: 18px 6px; min-height: 54px; font-size: .95rem; color: var(--muted); border-bottom: 3px solid transparent; position: relative; top: 1px; }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); padding: 6px 8px 0; gap: 8px; }
+.tabs button { padding: 18px 4px; min-height: 54px; font-size: .9rem; line-height: 1.2; color: var(--muted); border-bottom: 3px solid transparent; position: relative; top: 1px; }
 .tabs button[aria-selected=true] { color: var(--ink); border-bottom-color: var(--gold-2); font-weight: 700; }
 #play-form { padding: 25px 26px 20px; }
 #play-form label:not(:first-child) { margin-top: 20px; }
@@ -263,6 +263,8 @@ dialog .guide { margin-bottom: 24px; }
   footer > span { display: block; margin: 6px 0; }
   .room-heading { margin-top: -6px; margin-bottom: 14px; }
   .room-pill { font-size: .75rem; gap: 10px; padding: 7px 10px; letter-spacing: .06em; }
+  .tabs { gap: 4px; padding: 6px 6px 0; }
+  .tabs button { font-size: .8rem; padding: 14px 2px; }
   .connection-banner { font-size: .8rem; padding: 11px 12px; margin-bottom: 16px; }
   .board-frame { --cell: calc((100vw - 32px - 40px) / 10); grid-template-columns: 16px 1fr; grid-template-rows: 1fr 16px; padding: 8px 8px 4px 4px; border-radius: 12px; width: 100%; }
   .ranks, .files { font-size: .5rem; }

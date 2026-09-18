@@ -1,12 +1,12 @@
 # Stratego
 
-Classic Stratego for two players, browser to browser. A static site (TypeScript + Vite) with real peer-to-peer multiplayer over WebRTC — no account, no database, no game server. Hosted free on GitHub Pages.
+Classic Stratego for two players, browser to browser, or solo against the computer. A static site (TypeScript + Vite) with real peer-to-peer multiplayer over WebRTC — no account, no database, no game server. Hosted free on GitHub Pages.
 
 **Play it:** https://krafugo.github.io/stratego/
 
 ## How to play
 
-1. One player opens a war room and sends the 8-character room code or the invite link to a friend.
+1. One player opens a war room and sends the 8-character room code or the invite link to a friend — or choose **Play the computer** for a single-player game on this device.
 2. Both players arrange their 40 pieces in their four home rows. Tap two pieces to swap them (or drag them on a desktop), or press **Shuffle** for a fresh layout, then **Ready for battle**. You can arrange your army while you wait for your opponent.
 3. Red moves first. Tap one of your pieces, then a highlighted square. Colours swap every rematch.
 4. Capture the enemy flag to win. A player with no legal move also loses.
@@ -21,6 +21,18 @@ The complete rules and a card for every piece are in the game itself: **How to p
 - Attacking reveals both pieces. Higher rank wins; equal ranks are both removed; the survivor stays revealed. The Spy wins only when it attacks the Marshal. A Miner defuses a Bomb; anything else that attacks a Bomb is lost and the Bomb stays. Attacking the Flag ends the game.
 - Two-square rule: a piece may not move back and forth between the same two squares for a fourth consecutive move.
 - A player whose turn it is with no legal move loses. When both flags are sealed behind bombs and neither side has a Miner left, no flag can ever be captured and the round is a draw (each side proves it by revealing its flag and the bombs around it; the claim costs no turn). Resigning is allowed at any time. Rematches are unlimited within a room (up to 100 rounds).
+
+## The computer opponent
+
+**Play the computer** runs a second copy of the engine in the same tab, in the guest seat. The two engines exchange transcripts exactly as two browsers would, so the computer commits its army with the same salted hashes, answers attacks the same way, and sees only what a remote opponent would see: its own ranks, the enemy ranks revealed in combat, which pieces have moved, and the move history. It cannot peek. Refreshing the page resumes the game, and rematches swap colours as usual.
+
+How it plays (`src/bot.ts`):
+
+- **Setup** — a fresh layout every game, built on the usual principles: flag on the back row walled in by bombs, decoy bombs elsewhere, Spy beside the General, Scouts and senior officers up front, Miners kept back.
+- **Beliefs** — every unknown enemy piece gets a probability for each rank, fitted to the piece counts still unaccounted for. Pieces that moved cannot be bombs or the flag, back-row pieces that never move are probably bombs or the flag, and a piece that walks up to a revealed officer is probably stronger than it (and one that runs away, weaker).
+- **Search** — it samples complete enemy armies from those beliefs, searches each with alpha-beta a few plies deep in a worker, and picks the move that does best on average; attacks on unknown pieces are averaged exactly over every rank they could be. The evaluation values ranks by what is left on the board (a Spy is worth much more while the enemy Marshal lives, Miners more as they run out), chases pieces it can beat, keeps away from pieces that beat it, and closes in on the flag. The Marshal and General never gamble on suspected bombs while a cheaper piece could probe.
+
+`npm run arena [games] [red] [blue]` plays headless games between `bot`, `weak` and `random` players (or custom settings via `RED_OPTS` / `BLUE_OPTS` JSON) for tuning; `BOT_DEBUG=1` prints search depth and risky strikes.
 
 ## Run it locally
 
@@ -79,10 +91,11 @@ This is a friendly peer-to-peer game, not an anti-cheat service: it cannot stop 
 ## Project layout
 
 - `src/game.ts` — the engine: rules, movement, combat, commitments, deterministic replay and transcript merging.
+- `src/bot.ts`, `src/bot.worker.ts` — the computer opponent: setup, beliefs about hidden pieces, and the search, run off the main thread.
 - `src/pieces.ts` — the piece catalogue: ranks, counts, descriptions and SVG insignia.
 - Rooms, transports, seats and storage come from the `peer-room` dependency; `src/main.ts` wires them to the game.
 - `src/main.ts`, `src/tokens.ts`, `src/guide.ts`, `src/style.css` — lobby, board, tokens, setup flow, battle reports, tracker and the how-to-play guide.
-- `tests/game.test.ts` — engine and protocol tests (the transport has its own suite in peer-room).
+- `tests/game.test.ts` — engine and protocol tests (the transport has its own suite in peer-room); `tests/bot.test.ts` — the computer opponent; `scripts/arena.ts` — headless self-play.
 
 ## Branching
 
