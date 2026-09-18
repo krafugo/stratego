@@ -299,7 +299,7 @@ function dialogs() {
 }
 
 function render() {
-  root.innerHTML = `<div class="app-shell"><header class="site-header"><a class="brand" href="${e(location.pathname)}" data-action="home"><span class="brand-mark" aria-hidden="true">${crest}</span><span>Stratego<span class="brand-caption">HIDE THE FLAG · READ THE ARMY</span></span></a><button class="rules-button" data-action="rules"><span aria-hidden="true">?</span> How to play</button></header><main>${session ? room() : home()}</main><footer><span>Two armies, one field, zero servers.</span><span>Peer-to-peer <i>·</i> Verified reveals <i>·</i> Free forever</span></footer></div>${dialogs()}`;
+  root.innerHTML = `<div class="app-shell"><header class="site-header"><a class="brand" href="${e(location.pathname)}" data-action="home"><span class="brand-mark" aria-hidden="true">${crest}</span><span>Stratego<span class="brand-caption">HIDE THE FLAG · READ THE ARMY</span></span></a><button class="rules-button" data-action="rules"><span aria-hidden="true">?</span> How to play</button></header><main>${session ? room() : home()}</main><footer><span>Two armies, one field, zero servers.</span><span>Peer-to-peer <i>·</i> Verified reveals <i>·</i> Free forever <i>·</i> <span class="version" title="${e(__APP_COMMIT__ ? `Build ${__APP_COMMIT__}` : 'Development build')}">v${e(__APP_VERSION__)}</span></span></footer></div>${dialogs()}`;
   if (rulesOpen) document.querySelector<HTMLDialogElement>('#rules-dialog')?.showModal();
   if (leaveOpen) document.querySelector<HTMLDialogElement>('#leave-dialog')?.showModal();
 }
