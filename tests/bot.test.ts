@@ -105,6 +105,60 @@ test('the computer takes a free capture and never walks into a known bomb', asyn
   for (let i = 0; i < 5; i++) assert.notDeepEqual(think(host), { from: 40, to: 30 });
 });
 
+test('the computer never attacks a revealed piece that beats the attacker', async () => {
+  // Red's Captain at 61 walks up beside blue's Colonel, which reveals itself by taking a red Scout.
+  const { host, guest } = await table(layout('red', { 60: '2', 61: '6', 64: '2' }), layout('blue', { 30: '8', 34: '3', 35: '3' }));
+  const play = async (moves: [Game, number, number][]) => { for (const [g, from, to] of moves) { g.move(from, to); await converge(host, guest); } };
+  await play([[host, 60, 50], [guest, 34, 44], [host, 50, 40], [guest, 30, 40], [host, 61, 51], [guest, 44, 34], [host, 51, 41]]);   // blue's Colonel took the Scout on 40; the Captain now stands beside it on 41
+  assert.equal(host.view().board[40]!.rank, '8'); assert.equal(host.view().board[40]!.revealed, true);
+  await play([[guest, 35, 45]]);
+  for (let i = 0; i < 6; i++) assert.notDeepEqual(think(host), { from: 41, to: 40 });
+});
+
+test('the computer keeps most of its army still and lets few pieces do the work', async () => {
+  const host = new Game('d', null, noop, 'host'), guest = new Game('d', null, noop, 'guest');
+  await host.commitSetup(chooseSetup('red')); await guest.commitSetup(chooseSetup('blue'));
+  await converge(host, guest);
+  const used = new Set<string>();
+  for (let i = 0; i < 40 && host.view().phase === 'play'; i++) {
+    const mover = host.view().myTurn ? host : guest;
+    const move = think(mover, { timeMs: 60, samples: 6, maxDepth: 2 })!;
+    if (mover === host) used.add(host.sim().board[move.from]!.id);
+    mover.move(move.from, move.to);
+    await converge(host, guest);
+  }
+  assert.ok(used.size <= 10, `20 red moves were made by ${used.size} pieces`);
+});
+
+test('the Spy strikes a revealed Marshal when it can, and never steps up beside it', async () => {
+  // Blue's Marshal reveals itself by capturing a red Scout on 50; red's Spy waits on 61.
+  const { host, guest } = await table(layout('red', { 60: '2', 61: 'S', 64: '2' }), layout('blue', { 30: '10', 34: '3', 35: '3' }));
+  const play = async (moves: [Game, number, number][]) => { for (const [g, from, to] of moves) { g.move(from, to); await converge(host, guest); } };
+  await play([[host, 60, 50], [guest, 30, 40], [host, 64, 54], [guest, 40, 50]]);   // the Marshal takes the Scout on 50: revealed, two squares from the Spy on 61
+  assert.equal(host.view().board[50]!.rank, '10'); assert.equal(host.view().board[50]!.revealed, true);
+  for (let i = 0; i < 6; i++) { const m = think(host)!; assert.ok(!(m.from === 61 && m.to === 51) && !(m.from === 61 && m.to === 60), `the Spy does not walk into the Marshal's reach (${m.from}→${m.to})`); }
+  await play([[host, 54, 44], [guest, 50, 51]]);   // the Marshal steps beside the Spy
+  assert.deepEqual(think(host), { from: 61, to: 51 });
+});
+
+test('a Miner never gambles on a moved unknown piece', async () => {
+  const { host, guest } = await table(layout('red', { 60: '3', 61: '2', 89: '10', 99: '9', 88: '8', 98: '8' }), layout('blue', { 30: '7', 34: '3', 35: '3' }));
+  host.move(60, 50); await converge(host, guest); guest.move(30, 40); await converge(host, guest);   // an unknown blue piece that has moved stands beside the Miner
+  assert.equal(host.view().board[40]!.moved, true); assert.equal(host.view().board[40]!.rank, null);
+  assert.ok(host.legalTargets(50).includes(40));
+  for (let i = 0; i < 6; i++) assert.notDeepEqual(think(host), { from: 50, to: 40 });
+});
+
+test('a Miner runs from a known officer instead of waiting to be taken', async () => {
+  // Blue's Major reveals itself by taking a red Scout on 50, right in front of the unmoved Miner on 60, whose only way out is the square the Scout left.
+  const { host, guest } = await table(layout('red', { 60: '3', 61: '2', 62: '4', 89: '10', 99: '9', 88: '8', 98: '8' }), layout('blue', { 30: '7', 34: '3', 35: '3' }));
+  const play = async (moves: [Game, number, number][]) => { for (const [g, from, to] of moves) { g.move(from, to); await converge(host, guest); } };
+  await play([[host, 61, 51], [guest, 30, 40], [host, 51, 50], [guest, 40, 50]]);
+  assert.equal(host.view().board[50]!.rank, '7'); assert.equal(host.view().board[50]!.revealed, true);
+  assert.deepEqual(host.legalTargets(60).sort(), [50, 61]);
+  assert.deepEqual(think(host), { from: 60, to: 61 });
+});
+
 test('the computer beats a random mover and finishes the game', async () => {
   const host = new Game('arena', null, noop, 'host'), guest = new Game('arena', null, noop, 'guest');
   await host.commitSetup(chooseSetup('red')); await guest.commitSetup(chooseSetup('blue'));
