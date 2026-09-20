@@ -8,7 +8,7 @@ const noop = () => {};
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const canon = (value: unknown): string => JSON.stringify(value, (_, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]])) : v);
 /** Quick settings for tests: a shallow search over a couple of sampled armies. */
-const QUICK = { timeMs: 40, samples: 3, maxDepth: 2 };
+const QUICK = { timeMs: 200, samples: 8, maxDepth: 2 };
 
 /** Fills the home rows with a full army, honouring the requested squares first. */
 function layout(color: Color, fixed: Record<number, Rank>): Record<number, Rank> {

@@ -9,10 +9,12 @@
 //     randomness that no two games look alike.
 //  2. `beliefs` turns the evidence into a probability distribution over the
 //     rank of every unknown enemy piece.
-//  3. `chooseMove` samples complete enemy armies from those beliefs, searches
-//     each sample a few plies deep with alpha-beta, and picks the move that
-//     does best on average. Attacks on unknown pieces are averaged exactly
-//     over every rank the target could be.
+//  3. `chooseMove` samples complete worlds from those beliefs — the enemy army
+//     as we imagine it, and our own army as the enemy imagines it — searches
+//     each a few plies deep, and picks the move that does best on average.
+//     The enemy's replies are chosen under the enemy's beliefs, never with
+//     knowledge of our ranks; attacks on unseen pieces are averaged over every
+//     rank the attacker's beliefs allow.
 import { LAKES, colOf, homeSquares, neighbours, other, resolveCombat, rowOf, targets, type Color, type Round, type Sim } from './game.ts';
 import { PIECE_BY_RANK, RANKS, type Rank } from './pieces.ts';
 
@@ -160,7 +162,8 @@ export function beliefs(round: Round, sim: Sim, me: Color): Map<number, Distribu
       else {
         v *= ROW_PRIOR[rank][depth]!;
         if (rank === 'B' && depth === 3 && LAKE_FILES.has(colOf(sq))) v *= 1.5;   // cannot move forward: a favourite bomb spot
-        if (rank === 'F') v *= NEIGHBOURS[sq]!.every(n => sim.board[n]?.owner === them && !sim.board[n]!.moved) ? 2.5 : 0.4;   // flags are boxed in by pieces that never move
+        // Flags are boxed in: every known bomb beside a piece doubles the odds, a neighbour that never moved raises them, an open or moving neighbour lowers them.
+        if (rank === 'F') for (const n of NEIGHBOURS[sq]!) { const t = sim.board[n]; v *= t?.owner === them && t.rank === 'B' ? 2 : t?.owner === them && !t.moved ? 1.3 : 0.5; }
       }
       w[rank] = v * (learned?.[rank] ?? 1);
     }
@@ -190,6 +193,8 @@ const IS_MOVABLE = RANKS.map(r => PIECE_BY_RANK[r].movable);
 /** Combat outcome by attacker and defender index: 0 attacker wins, 1 defender wins, 2 both die, 3 flag taken. */
 const OUTCOME = new Int8Array(N * N);
 for (const a of RANKS) for (const d of RANKS) if (PIECE_BY_RANK[a].movable) OUTCOME[R[a] * N + R[d]] = ['attacker', 'defender', 'both', 'flag'].indexOf(resolveCombat(a, d));
+/** What n Miners are worth together while the enemy still has bombs: the last one is worth nearly a Marshal, and every loss costs at least a whole Miner. */
+const MINERS_WORTH = [0, 400, 650, 830, 980, 1130];
 /** Material value by rank index, before the adjustments in `values`. */
 const BASE = RANKS.map(r => ({ '10': 550, '9': 400, '8': 250, '7': 150, '6': 95, '5': 60, '4': 45, '3': 80, '2': 25, 'S': 45, 'B': 40, 'F': 0 })[r]);
 const DIST = new Int8Array(10000);
@@ -210,11 +215,20 @@ const CAP = 600;
 /** What taking the flag is worth at the root, where the odds are exact: a suspected flag is worth a Scout at long odds, an officer only when the flag is likelier than a bomb, and the Marshal or General only when it is nearly certain. */
 const capFor = (attacker: number, dist: Distribution) => (BASE[attacker]! >= 150 && dist.F < dist.B ? 0 : attacker === MARSHAL || attacker === GENERAL ? 300 : 1200);
 
-interface Cell { owner: Color; rank: number; moved: boolean; revealed: boolean; id: string }
-interface Board { cells: (Cell | null)[]; recent: Record<Color, Recent[]>; winner: Color | null; flags: Record<Color, number> }
+/** `rank` is the truth in this sampled world; for our own pieces `guess` is what the enemy imagines them to be (the rank itself once revealed). */
+interface Cell { owner: Color; rank: number; guess: number; moved: boolean; revealed: boolean; id: string }
+/** A sampled world. `flags` hold the true flag squares; `guessedFlag` is where the enemy imagines ours; `mine` lists our pieces so the board can be viewed through the enemy's eyes. */
+interface Board { cells: (Cell | null)[]; recent: Record<Color, Recent[]>; winner: Color | null; flags: Record<Color, number>; guessedFlag: number; mine: Cell[]; imagined: boolean }
 interface Undo { from: number; to: number; piece: Cell; target: Cell | null; moved: boolean; revealed: boolean; targetRevealed: boolean; pushed: boolean; dropped: Recent | undefined; winner: Color | null }
 class Timeout extends Error {}
 let nodes = 0, deadline = Infinity;
+/** Moves played so far in the round, set per search: late in the game the Miners set out even against a large, passive enemy army. */
+let moveCount = 0;
+/** Whose search this is, set per search, and what each side believes about the pieces it cannot see, by piece id. */
+let ME: Color = 'red', THEM: Color = 'blue';
+let OUR_BELIEF = new Map<string, Distribution>(), THEIR_BELIEF = new Map<string, Distribution>();
+/** How readily a known enemy piece attacks a piece whose rank it cannot see: the top ranks strike almost anything that moves, low ranks hardly dare. */
+const AGGRESSION = RANKS.map(r => ({ '10': 0.9, '9': 0.8, '8': 0.6, '7': 0.5, '6': 0.4, '5': 0.35, '4': 0.3, '3': 0.3, '2': 0.3, 'S': 0.2, 'B': 0, 'F': 0 })[r]);
 /** What the last search did, for tuning and tests. */
 export const stats = { depth: 0, nodes: 0, ms: 0, moves: 0 };
 
@@ -268,7 +282,7 @@ function values(mine: Int32Array, theirs: Int32Array, out: Float64Array) {
   let theirTop = 0;
   for (let r = 0; r < N; r++) { out[r] = BASE[r]!; if (IS_MOVABLE[r] && r !== SPY && theirs[r]! > 0) theirTop = Math.max(theirTop, VALUE[r]!); }
   if (theirs[MARSHAL]! > 0) out[SPY] = out[SPY]! + 170;                                   // the only answer to their Marshal
-  if (theirs[BOMB]! > 0) out[MINER] = out[MINER]! + 70 + Math.max(0, 5 - mine[MINER]!) ** 2 * 20;   // the only way through their bombs, so without them the game cannot be won: precious, and the last ones nearly priceless
+  if (theirs[BOMB]! > 0 && mine[MINER]! > 0) out[MINER] = MINERS_WORTH[Math.min(5, mine[MINER]!)]! / mine[MINER]!;   // the only way through their bombs, so without them the game cannot be won
   if (theirs[SPY] === 0) out[MARSHAL] = out[MARSHAL]! + 60;                                    // nothing movable can touch it any more
   for (let r = 0; r < N; r++) if (IS_MOVABLE[r] && r !== SPY) { if (VALUE[r]! > theirTop) out[r] = out[r]! + 60; else if (VALUE[r] === theirTop) out[r] = out[r]! + 20; }
 }
@@ -302,8 +316,9 @@ function evaluate(b: Board, side: Color): number {
     let v = (red ? VAL.red : VAL.blue)[r]!;
     if (IS_MOVABLE[r]) {
       const enemyMovers = red ? moversBlue : moversRed, theirMarshal = marshal[enemy];
-      // Miners stay home while the enemy army is still out in force; every piece that has never moved keeps the enemy guessing where the bombs are.
-      if (r !== MINER || enemyMovers <= 6) v += ADVANCE[p.owner][sq]!;
+      const digTime = enemyMovers <= 8 || moveCount >= 160;   // the Miners' hour: the enemy army has thinned, or the game has gone on long enough that waiting wins nothing
+      // Miners stay home until then; every piece that has never moved keeps the enemy guessing where the bombs are.
+      if (r !== MINER || digTime) v += ADVANCE[p.owner][sq]!;
       if (!p.moved) v += 3;
       if (!p.revealed) v += r === MARSHAL || r === GENERAL ? 15 : r === SPY ? (theirMarshal >= 0 ? 40 : 5) : 4;
       if (r === SPY && theirMarshal >= 0) {
@@ -318,31 +333,33 @@ function evaluate(b: Board, side: Color): number {
         const t = cells[ns[i]!];
         if (!t || t.owner === p.owner) continue;
         const o = OUTCOME[r * N + t.rank];
-        // A flag within reach is (nearly) a win; but flags in the search are mostly guesses, so the top pieces do not chase them into bombs.
-        const gain = o === 3 ? (r === MARSHAL || r === GENERAL ? 600 : 2000) : o === 0 ? enemyVals[t.rank]! : 0;
+        // A flag within reach is (nearly) a win, but flags in the search are guesses: worth CAP, like any win the search finds, scaled by how likely the viewer
+        // really thinks that piece is the flag. Our own flag is real to us, so an enemy beside it is taken at full weight.
+        const gain = o === 3 ? CAP * (t.revealed ? 1 : t.owner === ME ? (b.imagined ? THEIR_BELIEF.get(t.id)?.F ?? 1 : 1) : OUR_BELIEF.get(t.id)?.F ?? 1) : o === 0 ? enemyVals[t.rank]! : 0;
         if (red) { if (gain > threatRed) threatRed = gain; } else if (gain > threatBlue) threatBlue = gain;
       }
-      // Two or three squares away: close in on enemies this piece beats (intruders deep in our half above all), keep away from enemies that beat it —
-      // mostly when they know what it is, except Miners, which run from everything: without them the game cannot be won.
+      // Two or three squares away: close in on enemies this piece beats (known pieces and intruders deep in our half above all), and keep away from
+      // enemies that beat it. A piece the enemy has seen is in plain danger; an unseen one is in danger to the extent the enemy would strike blind —
+      // the top ranks attack anything that moves, and a piece that never moved might be a bomb. Miners run from everything: without them the game cannot be won.
       const near = NEAR[sq]!;
       for (let d = 0; d < 2; d++) {
-        const ring = near[d]!, w = d === 0 ? 0.1 : 0.05;
+        const ring = near[d]!, chase = d === 0 ? 0.1 : 0.05, flee = d === 0 ? 0.14 : 0.07;
         for (let i = 0; i < ring.length; i++) {
           const t = cells[ring[i]!];
           if (!t || t.owner === p.owner || !IS_MOVABLE[t.rank]) continue;
-          if (OUTCOME[r * N + t.rank] === 0) v += enemyVals[t.rank]! * w * (ADVANCE[t.owner][ring[i]!]! >= 6 ? 2.5 : 1);
-          if (OUTCOME[t.rank * N + r] === 0) v -= v * (r === MINER ? 2 * w : w * (p.revealed ? 1 : 0.4));
+          if (OUTCOME[r * N + t.rank] === 0) v += enemyVals[t.rank]! * chase * (ADVANCE[t.owner][ring[i]!]! >= 6 ? 2.5 : 1) * (t.revealed ? 1.5 : 1);
+          if (OUTCOME[t.rank * N + r] === 0) v -= v * flee * (r === MINER ? 1.5 : p.revealed ? 1 : AGGRESSION[t.rank]! * (p.moved ? 1 : 0.4));
         }
       }
       const flag = red ? b.flags.blue : b.flags.red;
-      if (flag >= 0 && ((red ? sealedBlue : sealedRed) ? r === MINER && enemyMovers <= 12 : r !== SPY)) {
+      if (flag >= 0 && ((red ? sealedBlue : sealedRed) ? r === MINER && (digTime || enemyMovers <= 12) : r !== SPY)) {
         const d = DIST[sq * 100 + flag]!;
         if (red) { if (d < huntRed) huntRed = d; } else if (d < huntBlue) huntBlue = d;
       }
     }
     score += red ? v : -v;
   }
-  const pull = (hunt: number, movers: number) => (hunt === 99 ? 0 : Math.max(0, 30 - 3 * hunt) * (movers <= 6 ? 3 : movers <= 12 ? 2 : 1));   // the fewer defenders, the more the flag pulls
+  const pull = (hunt: number, movers: number) => (hunt === 99 ? 0 : Math.max(0, 20 - hunt) * 2 * (movers <= 6 ? 3 : movers <= 12 || moveCount >= 160 ? 2 : 1));   // felt from anywhere on the board; the fewer defenders, and the longer the game, the stronger
   score += pull(huntRed, moversBlue) - pull(huntBlue, moversRed);
   score += side === 'red' ? 0.5 * threatRed - 0.3 * threatBlue : 0.3 * threatRed - 0.5 * threatBlue;
   return side === 'red' ? score : -score;
@@ -375,31 +392,86 @@ function unmake(b: Board, u: Undo, side: Color) {
   b.winner = u.winner;
 }
 
-function negamax(b: Board, side: Color, depth: number, alpha: number, beta: number, ply: number): number {
+/** Shows the board as the enemy imagines it: our unrevealed pieces wear the ranks the enemy guesses, our flag sits where the enemy expects it. Call `truth` to undo. */
+function imagine(b: Board) {
+  for (const c of b.mine) { const r = c.rank; c.rank = c.guess; c.guess = r; }
+  const f = b.flags[ME]; b.flags[ME] = b.guessedFlag; b.guessedFlag = f;
+  b.imagined = !b.imagined;
+}
+const truth = imagine;   // swapping twice restores the truth
+
+const terminal = (b: Board, ply: number) => (b.winner === ME ? WIN - ply : ply - WIN);
+/** What a move is worth to the mover, judged by `leaf` after it is made. An attack on a piece whose rank the mover cannot see is averaged over every rank
+ * the mover's beliefs allow, exactly as a player weighs the odds — not decided by one guess, and never by knowledge the mover does not have. */
+function weigh(b: Board, side: Color, m: number, belief: Map<string, Distribution>, leaf: () => number): number {
+  const target = b.cells[m % 100];
+  const dist = target && target.owner !== side && !target.revealed ? belief.get(target.id) : undefined;
+  if (!dist) { const u = make(b, m, side); const v = leaf(); unmake(b, u, side); return v; }
+  let total = 0, mass = 0;
+  const t = target!, was = t.rank;
+  for (const rank of RANKS) {
+    const p = dist[rank];
+    if (p < 0.02) continue;
+    // Finding the flag wins outright: worth CAP on top of the position as it stands, never the raw win value, which would swamp every other outcome.
+    if (rank === 'F') { total += p * ((side === ME ? evaluate(b, ME) : -evaluate(b, ME)) + CAP); mass += p; continue; }
+    // Give the target this rank by swapping with another unseen piece of its side that holds it, so the army's counts stay what they are.
+    const index = R[rank];
+    let partner: Cell | null = null;
+    if (index !== was) for (let sq = 0; sq < 100 && !partner; sq++) { const c = b.cells[sq]; if (c && c !== t && c.owner === t.owner && !c.revealed && c.rank === index && (IS_MOVABLE[was] || !c.moved)) partner = c; }
+    t.rank = index; if (partner) partner.rank = was;
+    const u = make(b, m, side); total += p * leaf(); unmake(b, u, side);
+    t.rank = was; if (partner) partner.rank = index;
+    mass += p;
+  }
+  return total / mass;
+}
+/** Our move: the best we can do `depth` plies deep, from our point of view. */
+function mine(b: Board, depth: number, ply: number): number {
   nodes++;
-  if (b.winner) return b.winner === side ? WIN - ply : ply - WIN;
-  if (depth === 0) return evaluate(b, side);
-  if ((nodes & 1023) === 0 && now() > deadline) throw new Timeout();
-  const list = ordered(b, side);
+  if (b.winner) return terminal(b, ply);
+  if (depth === 0) return evaluate(b, ME);
+  const list = ordered(b, ME);
   if (list.length === 0) return ply - WIN;
   let best = -Infinity;
   for (const m of list) {
-    const undo = make(b, m, side);
-    const v = -negamax(b, other(side), depth - 1, -beta, -alpha, ply + 1);
-    unmake(b, undo, side);
+    const v = weigh(b, ME, m, OUR_BELIEF, () => (b.winner ? WIN - ply : theirs(b, depth - 1, ply + 1)));
     if (v > best) best = v;
-    if (v > alpha) alpha = v;
-    if (alpha >= beta) break;
   }
   return best;
 }
+/** Replies the enemy would seriously consider: those within this much of its best, judged by its own beliefs. */
+const PLAUSIBLE = 35, REPLIES = 4;
+/** Their move: the enemy does not know our ranks, so it weighs each reply under its own beliefs about our army; the replies that look about as good as its best
+ * are the ones it might play, and we assume the worst of those for us, resolved with the truth. A known Major may well walk into our hidden Colonel, but we never
+ * count on it; our hidden Captain beside it is in real danger; and a reply the enemy would never consider does not frighten us. */
+function theirs(b: Board, depth: number, ply: number): number {
+  nodes++;
+  if (b.winner) return terminal(b, ply);
+  if (depth === 0) return -evaluate(b, THEM);
+  if ((nodes & 63) === 0 && now() > deadline) throw new Timeout();
+  const list = generate(b, THEM);
+  if (list.length === 0) return WIN - ply;
+  imagine(b);
+  const looks = list.map(m => weigh(b, THEM, m, THEIR_BELIEF, () => (b.winner ? WIN : -evaluate(b, ME))));
+  truth(b);
+  let best = -Infinity;
+  for (const w of looks) if (w > best) best = w;
+  const plausible = list.map((m, i) => [looks[i]!, m] as const).filter(([w]) => w >= best - PLAUSIBLE).sort((a, c) => c[0] - a[0]).slice(0, REPLIES);
+  let worst = Infinity;
+  for (const [, m] of plausible) {
+    const u = make(b, m, THEM);
+    const v = mine(b, depth - 1, ply + 1);
+    unmake(b, u, THEM);
+    if (v < worst) worst = v;
+  }
+  return worst;
+}
 
-/** One complete enemy army consistent with the beliefs: bombs and the flag go to pieces that never moved, everything else is drawn without replacement. */
-function sample(sim: Sim, belief: Map<number, Distribution>, hidden: Record<Rank, number>): Board {
-  const cells: (Cell | null)[] = sim.board.map(p => p && { owner: p.owner, rank: p.rank ? R[p.rank] : -1, moved: p.moved, revealed: p.revealed, id: p.id });
+/** Deals the hidden ranks of one side onto its unknown pieces, consistent with the beliefs: bombs and the flag go to pieces that never moved, everything else is drawn without replacement. */
+function deal(cells: (Cell | null)[], belief: Map<number, Distribution>, hidden: Record<Rank, number>, field: 'rank' | 'guess') {
   const counts = { ...hidden };
   const open = new Set(belief.keys());
-  const give = (sq: number, rank: Rank) => { cells[sq]!.rank = R[rank]; counts[rank]--; open.delete(sq); };
+  const give = (sq: number, rank: Rank) => { cells[sq]![field] = R[rank]; counts[rank]--; open.delete(sq); };
   for (const rank of ['F', 'B'] as const) {
     while (counts[rank] > 0) {
       const sq = weighted([...open], s => belief.get(s)![rank]);
@@ -408,9 +480,21 @@ function sample(sim: Sim, belief: Map<number, Distribution>, hidden: Record<Rank
     }
   }
   for (const sq of shuffled([...open])) give(sq, weighted(RANKS, r => (counts[r] > 0 ? belief.get(sq)![r] : 0)) ?? RANKS.find(r => counts[r] > 0)!);
+}
+/** One complete world: the enemy army drawn from our beliefs, and our own army as the enemy would draw it from theirs. */
+function sample(sim: Sim, belief: Map<number, Distribution>, hidden: Record<Rank, number>, theirBelief: Map<number, Distribution>, ourHidden: Record<Rank, number>): Board {
+  const cells: (Cell | null)[] = sim.board.map(p => p && { owner: p.owner, rank: p.rank ? R[p.rank] : -1, guess: p.revealed && p.rank ? R[p.rank] : -1, moved: p.moved, revealed: p.revealed, id: p.id });
+  deal(cells, belief, hidden, 'rank');
+  deal(cells, theirBelief, ourHidden, 'guess');
   const flags = { red: -1, blue: -1 };
-  cells.forEach((p, sq) => { if (p?.rank === FLAG) flags[p.owner] = sq; });
-  return { cells, recent: { red: [...sim.recent.red], blue: [...sim.recent.blue] }, winner: null, flags };
+  let guessedFlag = -1;
+  const mine: Cell[] = [];
+  cells.forEach((p, sq) => {
+    if (!p) return;
+    if (p.rank === FLAG) flags[p.owner] = sq;
+    if (p.owner === ME) { mine.push(p); if (p.guess === FLAG) guessedFlag = sq; } else p.guess = p.rank;
+  });
+  return { cells, recent: { red: [...sim.recent.red], blue: [...sim.recent.blue] }, winner: null, flags, guessedFlag, mine, imagined: false };
 }
 
 /** Squares the bot left in its last few moves: wandering back to them is dithering, not progress. */
@@ -436,17 +520,22 @@ export function chooseMove(input: BotInput): Move | null {
   if (legal.length === 0) return null;
   if (legal.length === 1) return legal[0]!;
   const started = now();
-  deadline = Infinity; nodes = 0;
+  deadline = Infinity; nodes = 0; moveCount = sim.moveCount; ME = me; THEM = them;
   const belief = beliefs(round, sim, me);
   const hidden = hiddenCounts(sim, them);
-  const boards = Array.from({ length: samples }, () => sample(sim, belief, hidden));
+  // The enemy's side of the table: our army with every unrevealed rank hidden, and the beliefs the enemy would form about it.
+  const masked: Sim = { ...sim, board: sim.board.map(p => (p && p.owner === me && !p.revealed ? { ...p, rank: null } : p)) };
+  const theirBelief = beliefs(round, masked, them), ourHidden = hiddenCounts(masked, me);
+  OUR_BELIEF = new Map([...belief].map(([sq, d]) => [sim.board[sq]!.id, d]));
+  THEIR_BELIEF = new Map([...theirBelief].map(([sq, d]) => [sim.board[sq]!.id, d]));
+  const boards = Array.from({ length: samples }, () => sample(sim, belief, hidden, theirBelief, ourHidden));
   const baselines = boards.map(b => evaluate(b, me));
   deadline = started + timeMs;
 
   /** The value of a root move in one sample, seen `depth` plies deep; a win or loss found on the way counts as CAP on top of the position as it stands. */
   const after = (b: Board, k: number, move: number, depth: number) => {
     const undo = make(b, move, me);
-    const v = b.winner ? WIN : depth <= 1 ? -evaluate(b, them) : -negamax(b, them, depth - 1, -Infinity, Infinity, 1);
+    const v = b.winner ? WIN : depth <= 1 ? -evaluate(b, them) : theirs(b, depth - 1, 1);
     unmake(b, undo, me);
     return v > WIN / 2 ? baselines[k]! + CAP : v < -WIN / 2 ? baselines[k]! - CAP : v;
   };
@@ -509,6 +598,19 @@ export function chooseMove(input: BotInput): Move | null {
   // and piece discipline: every piece that moves for the first time tells the enemy it is not a bomb, so a few pieces do the work while the rest keep the secret.
   const prober = sim.board.some(p => p?.owner === me && (p.rank === '2' || p.rank === '4' || p.rank === '5'));
   const inPlay = sim.board.filter(p => p?.owner === me && p.moved).length;
+  /** Late in the game the secret of which pieces are bombs matters less than getting on with it: the Miners set out and the first-move penalty fades. */
+  const late = sim.board.filter(p => p?.owner === them && p.rank !== 'B' && p.rank !== 'F').length <= 8 || sim.moveCount >= 160;
+  /** Known danger: after a move, each of our pieces left beside a revealed enemy that beats it costs a share of its worth, so getting away (or striking first) always stands out. */
+  const exposed = (move: Move) => {
+    const board = [...sim.board]; board[move.to] = board[move.from]!; board[move.from] = null;
+    let cost = 0;
+    for (let sq = 0; sq < 100; sq++) {
+      const p = board[sq];
+      if (!p || p.owner !== me || !PIECE_BY_RANK[p.rank!].movable) continue;
+      if (NEIGHBOURS[sq]!.some(n => { const t = board[n]; return t?.owner === them && !!t.rank && resolveCombat(t.rank, p.rank!) === 'attacker'; })) cost += (p.rank === '3' ? MINERS_WORTH[5]! / 5 : BASE[R[p.rank!]]!) * 0.35;
+    }
+    return cost;
+  };
   const backRows = (sq: number) => (me === 'red' ? sq >= 80 : sq < 20);
   /** A piece that may have to run, whatever it gives away by moving: an enemy beside it, a known stronger enemy two squares away, or — for a Miner — any enemy that close. */
   const pressed = (sq: number, rank: Rank) => NEIGHBOURS[sq]!.some(n => sim.board[n]?.owner === them)
@@ -516,16 +618,18 @@ export function chooseMove(input: BotInput): Move | null {
   let best: Root | null = null, bestScore = -Infinity;
   const traced: { move: Move; value: number; score: number }[] = [];
   for (const root of candidates) {
-    let score = root.value + (Math.random() - 0.5) * 4;
+    let score = root.value + (Math.random() - 0.5) * 4 - exposed(root.move);
     const piece = sim.board[root.move.from]!;
     if (root.unknown !== null) {
       const dist = belief.get(root.unknown)!, target = sim.board[root.unknown]!;
       const certainty = Math.max(...RANKS.map(r => dist[r]));
-      score += (1 - certainty) * (piece.rank === '2' ? (target.moved ? 14 : 5) : 6);
+      // Finding the flag is the point of the game: probing a piece that stands beside a likely flag with a cheap piece tells whether the nest is real.
+      const nest = target.moved ? 0 : Math.max(0, ...NEIGHBOURS[root.unknown]!.map(n => belief.get(n)?.F ?? 0));
+      score += (1 - certainty) * (piece.rank === '2' ? (target.moved ? 14 : 5) : 6) + (BASE[R[piece.rank!]]! < 100 ? nest * 40 : 0);
       if (!target.moved && prober && BASE[R[piece.rank!]]! >= 150) score -= dist.B * BASE[R[piece.rank!]]!;   // a Scout or Miner should be the one to find out
     } else if (!sim.board[root.move.to]) {
       score -= 6 * recentlyLeft(round, me, root.move.to);
-      if (!piece.moved && !pressed(root.move.from, piece.rank!)) score -= 12 + 3 * inPlay + (backRows(root.move.from) ? 15 : 0);
+      if (!piece.moved && !pressed(root.move.from, piece.rank!) && !(late && piece.rank === '3')) score -= (12 + 3 * inPlay + (backRows(root.move.from) ? 15 : 0)) * (late ? 0.3 : 1);
     }
     if (score > bestScore) { bestScore = score; best = root; }
     traced.push({ move: root.move, value: root.value, score });
